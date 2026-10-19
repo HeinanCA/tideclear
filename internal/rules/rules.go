@@ -189,8 +189,10 @@ func (s *Set) Match(apiVersion, kind string, target Version) (Finding, bool) {
 		}
 		var sev Severity
 		switch {
-		case r.RemovedIn != nil && !target.before(*r.RemovedIn):
+		case r.RemovedIn != nil && !target.before(*r.RemovedIn) && !r.Projected():
 			sev = SeverityBlocker
+		case r.RemovedIn != nil && !target.before(*r.RemovedIn):
+			sev = SeverityWarning
 		case r.DeprecatedIn != nil && !target.before(*r.DeprecatedIn):
 			sev = SeverityWarning
 		default:

@@ -12,7 +12,7 @@ import (
 
 // ScanText writes the cluster header, the findings table and coverage
 // footers (skipped groups/kinds, unverified objects). A removal planned after
-// the bundled Kubernetes release is marked "(scheduled)".
+// the bundled Kubernetes release is marked "(projected)".
 func ScanText(w io.Writer, r apiscan.Result) error {
 	if r.Path != "" {
 		_, _ = fmt.Fprintf(w, "path: %s\nfiles scanned: %d\n", r.Path, r.FilesScanned)
@@ -57,8 +57,8 @@ func findingsTable(w io.Writer, r apiscan.Result) error {
 	for _, it := range r.Findings {
 		rule := it.Finding.Rule
 		removed := versionOrDash(rule.RemovedIn)
-		if rule.Scheduled() {
-			removed += " (scheduled)"
+		if rule.Projected() {
+			removed += " (projected)"
 		}
 		row := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s",
 			it.Object.Kind, it.Object.APIVersion, dash(it.Object.Namespace), it.Object.Name,
@@ -103,7 +103,7 @@ type findingJSON struct {
 	DeprecatedIn *string `json:"deprecatedIn"`
 	Severity     string  `json:"severity"`
 	Source       string  `json:"source"`
-	Scheduled    bool    `json:"scheduled"`
+	Projected    bool    `json:"projected"`
 	Origin       string  `json:"origin"`
 }
 
@@ -146,7 +146,7 @@ func ScanJSON(w io.Writer, r apiscan.Result) error {
 		doc.Findings = append(doc.Findings, findingJSON{
 			Kind: it.Object.Kind, APIVersion: it.Object.APIVersion, Namespace: it.Object.Namespace, Name: it.Object.Name,
 			Replacement: rule.Replacement, RemovedIn: versionPtr(rule.RemovedIn), DeprecatedIn: versionPtr(rule.DeprecatedIn),
-			Severity: string(it.Finding.Severity), Source: rule.Source, Scheduled: rule.Scheduled(), Origin: it.Object.Origin,
+			Severity: string(it.Finding.Severity), Source: rule.Source, Projected: rule.Projected(), Origin: it.Object.Origin,
 		})
 	}
 	for _, s := range r.Skipped {

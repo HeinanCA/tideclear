@@ -13,7 +13,7 @@
       "deprecatedIn": "1.14",
       "severity": "BLOCKER",
       "source": "k8s-lifecycle",
-      "scheduled": false,
+      "projected": false,
       "origin": "web/ingress.yaml:1"
     }
   ],

@@ -12,7 +12,7 @@ const (
 )
 
 // LifecycleSourceVersion is the Kubernetes minor of the k8s.io/api the lifecycle data was generated from.
-// Removals after it are schedules, not facts; see Rule.Scheduled.
+// Removals after it are projections, not facts; see Rule.Projected.
 func LifecycleSourceVersion() (Version, error) { return lifecycleHeaderVersion(rawLifecycle) }
 
 var headerRE = regexp.MustCompile(`(?m)^# Generated from k8s\.io/api \S+ \(Kubernetes (\d+\.\d+)\)`)
@@ -25,9 +25,12 @@ func lifecycleHeaderVersion(b []byte) (Version, error) {
 	return ParseVersion(string(m[1]))
 }
 
-// Scheduled reports whether the removal is after the k8s.io/api release the data came from,
-// i.e. planned rather than already shipped.
-func (r Rule) Scheduled() bool {
+// Projected reports whether the removal is after the k8s.io/api release the data came from.
+// Such dates come from the deprecation policy's default timeline and can slip, so Match
+// caps them at WARNING.
+// shortcut: every post-release removal counts as projected, because k8s.io/api v0.37.1 sets no
+// explicit removed= tag for any of them; read the types.go tags if a future release adds one.
+func (r Rule) Projected() bool {
 	if r.RemovedIn == nil {
 		return false
 	}

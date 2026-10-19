@@ -84,20 +84,26 @@ func TestLoadMergedLifecycle(t *testing.T) {
 	if !ok || f.Severity != SeverityWarning || f.Rule.Source != SourceK8sLifecycle {
 		t.Errorf("DeviceClass at 1.37: ok=%v %+v, want lifecycle warning (Pluto said removed 1.36)", ok, f)
 	}
-	if !f.Rule.Scheduled() {
-		t.Errorf("DeviceClass removal 1.38 should be Scheduled")
+	if !f.Rule.Projected() {
+		t.Errorf("DeviceClass removal 1.38 should be Projected")
 	}
+	// Removals after the bundled Kubernetes release are projections: capped at WARNING.
 	f, ok = s.Match("resource.k8s.io/v1beta1", "DeviceClass", Version{1, 38})
-	if !ok || f.Severity != SeverityBlocker {
-		t.Errorf("DeviceClass at 1.38: ok=%v %+v, want blocker", ok, f)
+	if !ok || f.Severity != SeverityWarning {
+		t.Errorf("DeviceClass at 1.38: ok=%v %+v, want projected warning", ok, f)
 	}
 	f, ok = s.Match("admissionregistration.k8s.io/v1beta1", "MutatingAdmissionPolicy", Version{1, 40})
-	if !ok || f.Severity != SeverityBlocker {
-		t.Errorf("MAP at 1.40: ok=%v %+v, want blocker", ok, f)
+	if !ok || f.Severity != SeverityWarning {
+		t.Errorf("MAP at 1.40: ok=%v %+v, want projected warning", ok, f)
+	}
+	// A removal already shipped in the bundled release stays a blocker.
+	f, ok = s.Match("networking.k8s.io/v1beta1", "IPAddress", Version{1, 37})
+	if !ok || f.Severity != SeverityBlocker || f.Rule.Projected() {
+		t.Errorf("IPAddress at 1.37: ok=%v %+v, want released blocker", ok, f)
 	}
 	f, _ = s.Match("policy/v1beta1", "PodDisruptionBudget", Version{1, 25})
-	if f.Rule.Scheduled() {
-		t.Errorf("PDB removed 1.25 must not be Scheduled")
+	if f.Rule.Projected() {
+		t.Errorf("PDB removed 1.25 must not be Projected")
 	}
 	seen := map[string]bool{}
 	for _, r := range s.rules {

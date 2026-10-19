@@ -15,9 +15,9 @@
       "replacement": "resource.k8s.io/v1",
       "removedIn": "1.38",
       "deprecatedIn": "1.35",
-      "severity": "BLOCKER",
+      "severity": "WARNING",
       "source": "k8s-lifecycle",
-      "scheduled": true,
+      "projected": true,
       "origin": "managedFields"
     },
     {
@@ -30,7 +30,7 @@
       "deprecatedIn": "1.29",
       "severity": "BLOCKER",
       "source": "k8s-lifecycle",
-      "scheduled": false,
+      "projected": false,
       "origin": "last-applied"
     },
     {
@@ -43,7 +43,7 @@
       "deprecatedIn": "1.14",
       "severity": "BLOCKER",
       "source": "k8s-lifecycle",
-      "scheduled": false,
+      "projected": false,
       "origin": "managedFields"
     },
     {
@@ -56,7 +56,7 @@
       "deprecatedIn": "1.36",
       "severity": "WARNING",
       "source": "k8s-lifecycle",
-      "scheduled": true,
+      "projected": true,
       "origin": "managedFields"
     }
   ],
