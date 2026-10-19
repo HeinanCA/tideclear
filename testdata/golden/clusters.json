@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "clusters": [
+    {
+      "name": "demo-a",
+      "region": "us-east-1",
+      "version": "1.35",
+      "standardSupportEnd": "2027-03-27",
+      "extendedSupportEnd": "2028-03-27",
+      "daysLeft": 159,
+      "support": "standard",
+      "onExtended": false
+    },
+    {
+      "name": "demo-b",
+      "region": "eu-west-1",
+      "version": "1.31",
+      "standardSupportEnd": "2025-11-26",
+      "extendedSupportEnd": "2026-11-26",
+      "daysLeft": 38,
+      "support": "extended",
+      "onExtended": true
+    },
+    {
+      "name": "demo-c",
+      "region": "eu-west-1",
+      "version": "1.25",
+      "standardSupportEnd": "2024-05-01",
+      "extendedSupportEnd": "2025-05-01",
+      "daysLeft": -536,
+      "support": "unsupported",
+      "onExtended": false
+    },
+    {
+      "name": "demo-d",
+      "region": "eu-west-1",
+      "version": "9.99",
+      "standardSupportEnd": null,
+      "extendedSupportEnd": null,
+      "daysLeft": null,
+      "support": "unknown",
+      "onExtended": false
+    }
+  ],
+  "skippedRegions": [
+    {
+      "region": "ap-east-1",
+      "error": "opt-in required"
+    }
+  ]
+}
