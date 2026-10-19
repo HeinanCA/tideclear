@@ -43,8 +43,8 @@ func newCluster(major, minor string) cluster {
 	fs.SetManagedFields([]metav1.ManagedFieldsEntry{{Manager: "kubectl", Operation: "Update", APIVersion: fsOld}})
 	disc := &fakedisc.FakeDiscovery{
 		Fake: &clienttesting.Fake{Resources: []*metav1.APIResourceList{
-			{GroupVersion: fsGV, APIResources: []metav1.APIResource{{Name: "flowschemas", Kind: "FlowSchema"}}},
-			{GroupVersion: "networking.k8s.io/v1", APIResources: []metav1.APIResource{{Name: "ingresses", Kind: "Ingress", Namespaced: true}}},
+			{GroupVersion: fsGV, APIResources: []metav1.APIResource{{Name: "flowschemas", Kind: "FlowSchema", Verbs: metav1.Verbs{"get", "list"}}}},
+			{GroupVersion: "networking.k8s.io/v1", APIResources: []metav1.APIResource{{Name: "ingresses", Kind: "Ingress", Namespaced: true, Verbs: metav1.Verbs{"get", "list"}}}},
 		}},
 		FakedServerVersion: &version.Info{Major: major, Minor: minor},
 	}

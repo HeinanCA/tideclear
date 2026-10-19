@@ -46,7 +46,7 @@ func resList(gv string, kinds map[string]string) *metav1.APIResourceList {
 	l := &metav1.APIResourceList{GroupVersion: gv}
 	for name, kind := range kinds {
 		l.APIResources = append(l.APIResources,
-			metav1.APIResource{Name: name, Kind: kind, Namespaced: kind != "FlowSchema"},
+			metav1.APIResource{Name: name, Kind: kind, Namespaced: kind != "FlowSchema", Verbs: metav1.Verbs{"get", "list"}},
 			metav1.APIResource{Name: name + "/status", Kind: kind})
 	}
 	return l

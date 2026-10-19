@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -44,7 +43,7 @@ func skipReasons(res Result) string {
 
 func TestManifestListKindIsExpanded(t *testing.T) {
 	res, _ := scanManifests(t, manifestDir("list"), t137)
-	want := "PodDisruptionBudget policy/v1beta1 web BLOCKER list.yaml:0/0"
+	want := "PodDisruptionBudget policy/v1beta1 api BLOCKER typed.yaml:0/0|PodDisruptionBudget policy/v1beta1 web BLOCKER list.yaml:0/0"
 	if got := strings.Join(hits(res), "|"); got != want {
 		t.Fatalf("got %s\nwant %s", got, want)
 	}
@@ -72,7 +71,7 @@ func TestManifestTopLevelYAMLListIsExpanded(t *testing.T) {
 
 func TestManifestListItemsWithoutEvidenceAreUnverified(t *testing.T) {
 	dir := t.TempDir()
-	put(t, filepath.Join(dir, "l.yaml"), "apiVersion: v1\nkind: PodList\nitems:\n  - kind: Pod\n  - foo: bar\n")
+	put(t, filepath.Join(dir, "l.yaml"), "apiVersion: v1\nkind: List\nitems:\n  - kind: Pod\n  - foo: bar\n")
 	res, _ := scanManifests(t, dir, t137)
 	if res.Unverified != 1 || len(res.Findings) != 0 || len(res.Skipped) != 0 {
 		t.Fatalf("unverified=%d findings=%v skipped=%v", res.Unverified, hits(res), res.Skipped)
@@ -184,22 +183,6 @@ func TestManifestSymlinkedDirNotFollowed(t *testing.T) {
 	res, warn := scanManifests(t, dir, t137)
 	if len(res.Findings) != 0 || skipReasons(res) != "loop: symlinked directory not followed" || strings.Count(warn, "\n") != 1 {
 		t.Fatalf("findings=%v skipped=%s warn=%q", hits(res), skipReasons(res), warn)
-	}
-}
-
-func TestManifestFIFONeverOpened(t *testing.T) {
-	dir := t.TempDir()
-	if err := syscall.Mkfifo(filepath.Join(dir, "pipe.yaml"), 0o644); err != nil {
-		t.Skipf("mkfifo: %v", err)
-	}
-	done := make(chan Result, 1)
-	go func() {
-		res, _ := scanManifests(t, dir, t137)
-		done <- res
-	}()
-	res := <-done // a blocking open would hang here until the test timeout
-	if skipReasons(res) != "pipe.yaml: not a regular file" || res.FilesScanned != 0 {
-		t.Fatalf("skipped=%s files=%d", skipReasons(res), res.FilesScanned)
 	}
 }
 

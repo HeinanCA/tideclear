@@ -45,6 +45,9 @@ type Rule struct {
 type Finding struct {
 	Rule     Rule
 	Severity Severity
+	// Replacement is Rule.Replacement followed through any replacement that is
+	// itself removed at the target version.
+	Replacement string
 }
 
 // GroupKind identifies a resource kind within an API group ("" is the core group).
@@ -199,25 +202,59 @@ func (s *Set) Match(apiVersion, kind string, target Version) (Finding, bool) {
 			continue
 		}
 		if !found || (sev == SeverityBlocker && best.Severity != SeverityBlocker) {
-			best, found = Finding{Rule: r, Severity: sev}, true
+			best, found = Finding{Rule: r, Severity: sev, Replacement: s.resolveReplacement(r, target)}, true
 		}
 	}
 	return best, found
 }
 
-// Kinds returns the distinct group/kind pairs covered by the rules, in first-seen order.
+const maxReplacementHops = 8
+
+// resolveReplacement follows r's replacement while that apiVersion+kind is
+// itself removed at target, so a v1beta1 object is not pointed at a v1beta3
+// that no longer exists.
+func (s *Set) resolveReplacement(r Rule, target Version) string {
+	repl := r.Replacement
+	seen := map[string]bool{r.APIVersion: true}
+	for hop := 0; hop < maxReplacementHops && repl != "" && !seen[repl]; hop++ {
+		seen[repl] = true
+		next := ""
+		for _, c := range s.rules {
+			if c.APIVersion == repl && c.Kind == r.Kind && c.RemovedIn != nil && !target.before(*c.RemovedIn) && c.Replacement != "" {
+				next = c.Replacement
+				break
+			}
+		}
+		if next == "" {
+			break
+		}
+		repl = next
+	}
+	return repl
+}
+
+// Kinds returns the distinct group/kind pairs covered by the rules and by
+// their replacements (same kind, replacement group), in first-seen order. The
+// replacement pairs let objects of a removed group be listed through the
+// current group and matched on their last-applied/managedFields evidence.
 func (s *Set) Kinds() []GroupKind {
 	seen := map[GroupKind]bool{}
 	var out []GroupKind
-	for _, r := range s.rules {
+	add := func(apiVersion, kind string) {
 		group := ""
-		if g, _, ok := strings.Cut(r.APIVersion, "/"); ok {
+		if g, _, ok := strings.Cut(apiVersion, "/"); ok {
 			group = g
 		}
-		gk := GroupKind{Group: group, Kind: r.Kind}
+		gk := GroupKind{Group: group, Kind: kind}
 		if !seen[gk] {
 			seen[gk] = true
 			out = append(out, gk)
+		}
+	}
+	for _, r := range s.rules {
+		add(r.APIVersion, r.Kind)
+		if r.Replacement != "" {
+			add(r.Replacement, r.Kind)
 		}
 	}
 	return out

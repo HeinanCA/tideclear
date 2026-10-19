@@ -15,17 +15,33 @@ import (
 // the bundled Kubernetes release is marked "(projected)".
 func ScanText(w io.Writer, r apiscan.Result) error {
 	if r.Path != "" {
-		_, _ = fmt.Fprintf(w, "path: %s\nfiles scanned: %d\n", r.Path, r.FilesScanned)
+		if _, err := fmt.Fprintf(w, "path: %s\nfiles scanned: %d\n", r.Path, r.FilesScanned); err != nil {
+			return err
+		}
 	} else if c := r.Cluster; c.Context != "" || c.Server != "" {
 		line := fmt.Sprintf("cluster: %s (%s)", dash(c.Context), dash(c.Server))
 		if c.EKSCluster != "" {
 			line += fmt.Sprintf(" [EKS: %s]", c.EKSCluster)
 		}
-		_, _ = fmt.Fprintln(w, line)
+		if _, err := fmt.Fprintln(w, line); err != nil {
+			return err
+		}
 	}
+	if err := scanSummary(w, r); err != nil {
+		return err
+	}
+	if r.Unverified > 0 {
+		_, err := fmt.Fprintf(w, "%d objects had no apiVersion evidence and were not checked\n", r.Unverified)
+		return err
+	}
+	return nil
+}
+
+func scanSummary(w io.Writer, r apiscan.Result) error {
+	var err error
 	switch {
 	case len(r.Findings) > 0:
-		if err := findingsTable(w, r); err != nil {
+		if err = findingsTable(w, r); err != nil {
 			return err
 		}
 		if n := len(r.Skipped); n > 0 {
@@ -33,17 +49,14 @@ func ScanText(w io.Writer, r apiscan.Result) error {
 			if r.Path != "" {
 				what = "files"
 			}
-			_, _ = fmt.Fprintf(w, "warning: %d %s skipped (see stderr); results are partial\n", n, what)
+			_, err = fmt.Fprintf(w, "warning: %d %s skipped (see stderr); results are partial\n", n, what)
 		}
 	case len(r.Skipped) > 0:
-		_, _ = fmt.Fprintf(w, "no findings for target %s in scanned resources; %d skipped, results are partial\n", r.Target, len(r.Skipped))
+		_, err = fmt.Fprintf(w, "no findings for target %s in scanned resources; %d skipped, results are partial\n", r.Target, len(r.Skipped))
 	default:
-		_, _ = fmt.Fprintf(w, "no findings for target %s\n", r.Target)
+		_, err = fmt.Fprintf(w, "no findings for target %s\n", r.Target)
 	}
-	if r.Unverified > 0 {
-		_, _ = fmt.Fprintf(w, "%d objects had no apiVersion evidence and were not checked\n", r.Unverified)
-	}
-	return nil
+	return err
 }
 
 func findingsTable(w io.Writer, r apiscan.Result) error {
@@ -62,7 +75,7 @@ func findingsTable(w io.Writer, r apiscan.Result) error {
 		}
 		row := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s",
 			it.Object.Kind, it.Object.APIVersion, dash(it.Object.Namespace), it.Object.Name,
-			dash(rule.Replacement), removed, it.Finding.Severity)
+			dash(it.Finding.Replacement), removed, it.Finding.Severity)
 		if pathMode {
 			row += "\t" + it.Object.Origin
 		}
@@ -145,7 +158,7 @@ func ScanJSON(w io.Writer, r apiscan.Result) error {
 		rule := it.Finding.Rule
 		doc.Findings = append(doc.Findings, findingJSON{
 			Kind: it.Object.Kind, APIVersion: it.Object.APIVersion, Namespace: it.Object.Namespace, Name: it.Object.Name,
-			Replacement: rule.Replacement, RemovedIn: versionPtr(rule.RemovedIn), DeprecatedIn: versionPtr(rule.DeprecatedIn),
+			Replacement: it.Finding.Replacement, RemovedIn: versionPtr(rule.RemovedIn), DeprecatedIn: versionPtr(rule.DeprecatedIn),
 			Severity: string(it.Finding.Severity), Source: rule.Source, Projected: rule.Projected(), Origin: it.Object.Origin,
 		})
 	}

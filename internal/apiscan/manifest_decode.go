@@ -53,7 +53,7 @@ func extract(doc any, origin string, objs *[]Object, unverified *int) {
 	kind, _ := kindRaw.(string)
 	if items, isList := m["items"].([]any); isList && strings.HasSuffix(kind, "List") {
 		for j, item := range items {
-			extract(item, fmt.Sprintf("%s/%d", origin, j), objs, unverified)
+			extract(inheritTypeMeta(item, apiVersion, kind), fmt.Sprintf("%s/%d", origin, j), objs, unverified)
 		}
 		return
 	}
@@ -65,4 +65,25 @@ func extract(doc any, origin string, objs *[]Object, unverified *int) {
 	ns, _ := meta["namespace"].(string)
 	name, _ := meta["name"].(string)
 	*objs = append(*objs, Object{APIVersion: apiVersion, Kind: kind, Namespace: ns, Name: name, Origin: origin})
+}
+
+// inheritTypeMeta fills a typed list item's missing apiVersion and kind from
+// the list (a PodDisruptionBudgetList item is a PodDisruptionBudget). A
+// generic "List" says nothing about its items. The item is copied, not mutated.
+func inheritTypeMeta(item any, listAPIVersion, listKind string) any {
+	m, ok := item.(map[string]any)
+	if !ok || listKind == "List" {
+		return item
+	}
+	out := make(map[string]any, len(m)+2)
+	for k, v := range m {
+		out[k] = v
+	}
+	if _, has := out["apiVersion"]; !has && listAPIVersion != "" {
+		out["apiVersion"] = listAPIVersion
+	}
+	if _, has := out["kind"]; !has {
+		out["kind"] = strings.TrimSuffix(listKind, "List")
+	}
+	return out
 }

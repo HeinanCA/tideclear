@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -35,8 +36,29 @@ func NewClusterSource(disc discovery.DiscoveryInterface, dyn dynamic.Interface, 
 	return &clusterSource{disc: disc, dyn: dyn, set: set}
 }
 
-func (c *clusterSource) ServerVersion(context.Context) (rules.Version, bool, error) {
-	info, err := c.disc.ServerVersion()
+// callCtx runs a discovery call, which client-go gives no context, and gives
+// up on ctx.Done. The abandoned call is still bounded by the 30s rest timeout.
+func callCtx[T any](ctx context.Context, fn func() (T, error)) (T, error) {
+	type result struct {
+		v   T
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		v, err := fn()
+		ch <- result{v, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.v, r.err
+	case <-ctx.Done():
+		var zero T
+		return zero, ctx.Err()
+	}
+}
+
+func (c *clusterSource) ServerVersion(ctx context.Context) (rules.Version, bool, error) {
+	info, err := callCtx(ctx, c.disc.ServerVersion)
 	if err != nil {
 		return rules.Version{}, false, err
 	}
@@ -52,7 +74,7 @@ func (c *clusterSource) ServerVersion(context.Context) (rules.Version, bool, err
 // first, then through its other served versions for the wanted kinds not yet
 // found; a kind is listed once, via the first version that serves it.
 func (c *clusterSource) Objects(ctx context.Context) (Observed, error) {
-	groups, err := c.disc.ServerGroups()
+	groups, err := callCtx(ctx, c.disc.ServerGroups)
 	if err != nil {
 		if cerr := ctx.Err(); cerr != nil {
 			return Observed{}, cerr
@@ -110,7 +132,7 @@ func (c *clusterSource) readGroup(ctx context.Context, g metav1.APIGroup, wanted
 			}
 			return fmt.Sprintf("version %s: %s", strings.TrimPrefix(gv, g.Name+"/"), err)
 		}
-		list, err := c.disc.ServerResourcesForGroupVersion(gv)
+		list, err := callCtx(ctx, func() (*metav1.APIResourceList, error) { return c.disc.ServerResourcesForGroupVersion(gv) })
 		if err != nil {
 			if cerr := ctx.Err(); cerr != nil {
 				return cerr
@@ -124,7 +146,8 @@ func (c *clusterSource) readGroup(ctx context.Context, g metav1.APIGroup, wanted
 			continue
 		}
 		for _, r := range list.APIResources {
-			if strings.Contains(r.Name, "/") || !wanted[rules.GroupKind{Group: g.Name, Kind: r.Kind}] || found[r.Kind] {
+			// Create-only resources (TokenReview, SubjectAccessReview, ...) answer list with 405.
+			if strings.Contains(r.Name, "/") || !slices.Contains(r.Verbs, "list") || !wanted[rules.GroupKind{Group: g.Name, Kind: r.Kind}] || found[r.Kind] {
 				continue
 			}
 			found[r.Kind] = true
