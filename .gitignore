@@ -1,0 +1,6 @@
+.cc10x/
+bin/
+dist/
+.DS_Store
+*.test
+*.out
