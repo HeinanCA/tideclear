@@ -1,0 +1,6 @@
+path: deploy/manifests
+files scanned: 4
+KIND     APIVERSION          NAMESPACE  NAME  REPLACEMENT           REMOVED IN  SEVERITY  ORIGIN
+Ingress  extensions/v1beta1  demo       web   networking.k8s.io/v1  1.22        BLOCKER   web/ingress.yaml:1
+warning: 1 files skipped (see stderr); results are partial
+1 objects had no apiVersion evidence and were not checked

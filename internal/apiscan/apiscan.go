@@ -26,6 +26,8 @@ type Observed struct {
 	Objects    []Object
 	Skipped    []Skipped
 	Unverified int
+	// FilesScanned counts the manifest files a path scan read.
+	FilesScanned int
 }
 
 // ClusterInfo identifies the cluster a scan ran against.
@@ -46,11 +48,14 @@ type ResultItem struct {
 
 // Result is the outcome of a scan.
 type Result struct {
-	Target     rules.Version
-	Cluster    ClusterInfo
-	Findings   []ResultItem
-	Skipped    []Skipped
-	Unverified int
+	Target  rules.Version
+	Cluster ClusterInfo
+	// Path is the manifest root of a --path scan (empty for a live scan).
+	Path         string
+	Findings     []ResultItem
+	Skipped      []Skipped
+	Unverified   int
+	FilesScanned int
 }
 
 // Scan matches every object from src against set at target. Findings are
@@ -60,7 +65,7 @@ func Scan(ctx context.Context, src Source, set *rules.Set, target rules.Version)
 	if err != nil {
 		return Result{}, err
 	}
-	res := Result{Target: target, Skipped: obs.Skipped, Unverified: obs.Unverified}
+	res := Result{Target: target, Skipped: obs.Skipped, Unverified: obs.Unverified, FilesScanned: obs.FilesScanned}
 	for _, o := range obs.Objects {
 		if f, ok := set.Match(o.APIVersion, o.Kind, target); ok {
 			res.Findings = append(res.Findings, ResultItem{Object: o, Finding: f})

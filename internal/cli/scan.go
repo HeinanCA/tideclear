@@ -20,16 +20,21 @@ import (
 var scanTimeout = 10 * time.Minute
 
 type scanFlags struct {
-	kubeconfig, kubeContext, target, cluster, profile, region, output string
+	kubeconfig, kubeContext, target, cluster, profile, region, output, path string
+	pathSet                                                                 bool // --path given (even if empty)
 }
 
 func newScanCmd(deps Deps) *cobra.Command {
 	var fl scanFlags
 	cmd := &cobra.Command{
 		Use:   "scan",
-		Short: "Find deprecated and removed Kubernetes APIs in a live cluster",
+		Short: "Find deprecated and removed Kubernetes APIs in a live cluster or in manifests",
 		Long: "Find objects in a live cluster that use Kubernetes APIs deprecated or removed\n" +
 			"by the target version. Read-only: only get/list requests are sent.\n\n" +
+			"With --path, scan .yaml/.yml/.json manifests (a directory, searched recursively, or\n" +
+			"one file) instead. No cluster is contacted: give --target, or --cluster to\n" +
+			"read the current version from EKS (target defaults to its next minor). --path\n" +
+			"cannot be combined with --kubeconfig or --context.\n\n" +
 			"The target defaults to the cluster's next minor version. With --cluster the\n" +
 			"current version comes from EKS (honoring --profile and --region); otherwise\n" +
 			"from the API server. --cluster and --context are independent: they must name\n" +
@@ -38,7 +43,10 @@ func newScanCmd(deps Deps) *cobra.Command {
 			"Groups or kinds that cannot be read are reported on stderr and in the JSON\n" +
 			"\"skipped\" list; the exit code reflects only what was scanned.",
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error { return runScan(cmd, deps, fl) },
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			fl.pathSet = cmd.Flags().Changed("path")
+			return runScan(cmd, deps, fl)
+		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&fl.kubeconfig, "kubeconfig", "", "path to a kubeconfig file (default: $KUBECONFIG or ~/.kube/config)")
@@ -47,6 +55,7 @@ func newScanCmd(deps Deps) *cobra.Command {
 	f.StringVar(&fl.cluster, "cluster", "", "EKS cluster name: read the current version from EKS")
 	f.StringVar(&fl.profile, "profile", "", "AWS shared-config profile (with --cluster)")
 	f.StringVar(&fl.region, "region", "", "AWS region (with --cluster)")
+	f.StringVar(&fl.path, "path", "", "scan manifests under this file or directory instead of a live cluster")
 	f.StringVar(&fl.output, "output", "text", "output format: text|json (table is an alias of text)")
 	return cmd
 }
@@ -64,15 +73,25 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 		}
 		target = &t
 	}
-	disc, dyn, err := deps.Kube(fl.kubeconfig, fl.kubeContext)
-	if err != nil {
-		return &ToolError{Err: err}
+	if fl.pathSet {
+		if err := checkPathFlags(fl, target); err != nil {
+			return &ToolError{Err: err}
+		}
 	}
 	set, err := rules.Load()
 	if err != nil {
 		return &ToolError{Err: err}
 	}
-	src := apiscan.NewClusterSource(disc, dyn, set)
+	var src apiscan.Source
+	if fl.pathSet {
+		src = apiscan.NewManifestSource(fl.path, cmd.ErrOrStderr())
+	} else {
+		disc, dyn, err := deps.Kube(fl.kubeconfig, fl.kubeContext)
+		if err != nil {
+			return &ToolError{Err: err}
+		}
+		src = apiscan.NewClusterSource(disc, dyn, set)
+	}
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
@@ -80,16 +99,21 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 	ctx, cancel := context.WithTimeout(ctx, scanTimeout)
 	defer cancel()
 
-	current, err := currentVersion(ctx, deps, fl, src)
-	if err != nil {
-		return &ToolError{Err: interruptedOr(ctx, err)}
-	}
-	tv := current.Next()
-	if target != nil {
-		tv = *target
-	}
-	if err := rules.ValidateTarget(current, tv); err != nil {
-		return &ToolError{Err: err}
+	var tv rules.Version
+	if fl.pathSet && fl.cluster == "" {
+		tv = *target // checkPathFlags guarantees it; there is no current version to validate against
+	} else {
+		current, err := currentVersion(ctx, deps, fl, src)
+		if err != nil {
+			return &ToolError{Err: interruptedOr(ctx, err)}
+		}
+		tv = current.Next()
+		if target != nil {
+			tv = *target
+		}
+		if err := rules.ValidateTarget(current, tv); err != nil {
+			return &ToolError{Err: err}
+		}
 	}
 
 	res, err := apiscan.Scan(ctx, src, set, tv)
@@ -97,12 +121,15 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 		return &ToolError{Err: interruptedOr(ctx, err)}
 	}
 	res.Cluster = apiscan.ClusterInfo{EKSCluster: fl.cluster}
-	if deps.KubeIdentity != nil {
+	res.Path = fl.path
+	if !fl.pathSet && deps.KubeIdentity != nil {
 		res.Cluster.Context, res.Cluster.Server = deps.KubeIdentity(fl.kubeconfig, fl.kubeContext)
 	}
 	for i, s := range res.Skipped {
 		res.Skipped[i].Reason = oneLine(s.Reason)
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "tideclear: warning: %s\n", oneLine(skippedMessage(s)))
+		if fl.path == "" { // the manifest source already warned once per file
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "tideclear: warning: %s\n", oneLine(skippedMessage(s)))
+		}
 	}
 	if format == outputJSON {
 		err = report.ScanJSON(cmd.OutOrStdout(), res)
@@ -116,6 +143,23 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 		if it.Finding.Severity == rules.SeverityBlocker {
 			return ErrBlockers
 		}
+	}
+	return nil
+}
+
+// checkPathFlags rejects --path combinations that make no sense, before any
+// client is built.
+func checkPathFlags(fl scanFlags, target *rules.Version) error {
+	switch {
+	case fl.path == "":
+		return errors.New("--path must not be empty")
+	case fl.kubeconfig != "" || fl.kubeContext != "":
+		return errors.New("--path cannot be combined with --kubeconfig or --context")
+	case target == nil && fl.cluster == "":
+		return errors.New("--path needs --target (or --cluster to read the current version from EKS)")
+	}
+	if _, err := os.Stat(fl.path); err != nil {
+		return fmt.Errorf("--path: %s", oneLine(err.Error()))
 	}
 	return nil
 }

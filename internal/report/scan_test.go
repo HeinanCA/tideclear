@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/HeinanCA/tideclear/internal/apiscan"
@@ -106,5 +107,88 @@ func TestScanJSONEmptyArrays(t *testing.T) {
 		if a, ok := doc[k].([]any); !ok || len(a) != 0 {
 			t.Errorf("%s = %#v, want empty array", k, doc[k])
 		}
+	}
+}
+
+func pathSample(t *testing.T) apiscan.Result {
+	return apiscan.Result{
+		Target:       target138,
+		Path:         "deploy/manifests",
+		FilesScanned: 4,
+		Findings: []apiscan.ResultItem{
+			item(t, "extensions/v1beta1", "Ingress", "demo", "web", "web/ingress.yaml:1"),
+		},
+		Skipped: []apiscan.Skipped{{Group: "web/broken.yaml", Reason: "malformed YAML: line 5"}},
+	}
+}
+
+func TestScanTextPathHeader(t *testing.T) {
+	var b bytes.Buffer
+	if err := ScanText(&b, pathSample(t)); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.SplitN(b.String(), "\n", 2)[0]; got != "path: deploy/manifests" {
+		t.Errorf("first line = %q", got)
+	}
+	if strings.Contains(b.String(), "cluster:") {
+		t.Errorf("path scan printed a cluster header:\n%s", b.String())
+	}
+}
+
+func TestScanJSONPathGolden(t *testing.T) {
+	var b bytes.Buffer
+	if err := ScanJSON(&b, pathSample(t)); err != nil {
+		t.Fatal(err)
+	}
+	golden(t, "scan-path.json", b.Bytes())
+	var doc map[string]any
+	if err := json.Unmarshal(b.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := doc["cluster"]; ok {
+		t.Errorf("cluster present in path scan: %v", doc["cluster"])
+	}
+	if doc["schemaVersion"] != float64(1) || doc["path"] != "deploy/manifests" {
+		t.Errorf("schemaVersion/path = %v / %v", doc["schemaVersion"], doc["path"])
+	}
+}
+
+func TestScanJSONLiveHasNoPathField(t *testing.T) {
+	var b bytes.Buffer
+	if err := ScanJSON(&b, scanSample(t)); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), `"path"`) {
+		t.Errorf("live scan JSON has path field:\n%s", b.String())
+	}
+}
+
+func TestScanTextPathGolden(t *testing.T) {
+	var b bytes.Buffer
+	r := pathSample(t)
+	r.Unverified = 1
+	if err := ScanText(&b, r); err != nil {
+		t.Fatal(err)
+	}
+	golden(t, "scan-path.txt", b.Bytes())
+}
+
+func TestScanJSONPathEmptyKeepsFilesScannedZero(t *testing.T) {
+	var b bytes.Buffer
+	if err := ScanJSON(&b, apiscan.Result{Target: target138, Path: "deploy/empty"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), `"filesScanned": 0`) {
+		t.Errorf("path scan with zero files omits filesScanned:\n%s", b.String())
+	}
+}
+
+func TestScanJSONLiveOmitsFilesScanned(t *testing.T) {
+	var b bytes.Buffer
+	if err := ScanJSON(&b, scanSample(t)); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "filesScanned") || strings.Contains(b.String(), "ORIGIN") {
+		t.Errorf("live output has path-only fields:\n%s", b.String())
 	}
 }

@@ -14,7 +14,9 @@ import (
 // footers (skipped groups/kinds, unverified objects). A removal planned after
 // the bundled Kubernetes release is marked "(scheduled)".
 func ScanText(w io.Writer, r apiscan.Result) error {
-	if c := r.Cluster; c.Context != "" || c.Server != "" {
+	if r.Path != "" {
+		_, _ = fmt.Fprintf(w, "path: %s\nfiles scanned: %d\n", r.Path, r.FilesScanned)
+	} else if c := r.Cluster; c.Context != "" || c.Server != "" {
 		line := fmt.Sprintf("cluster: %s (%s)", dash(c.Context), dash(c.Server))
 		if c.EKSCluster != "" {
 			line += fmt.Sprintf(" [EKS: %s]", c.EKSCluster)
@@ -27,7 +29,11 @@ func ScanText(w io.Writer, r apiscan.Result) error {
 			return err
 		}
 		if n := len(r.Skipped); n > 0 {
-			_, _ = fmt.Fprintf(w, "warning: %d groups/kinds skipped (see stderr); results are partial\n", n)
+			what := "groups/kinds"
+			if r.Path != "" {
+				what = "files"
+			}
+			_, _ = fmt.Fprintf(w, "warning: %d %s skipped (see stderr); results are partial\n", n, what)
 		}
 	case len(r.Skipped) > 0:
 		_, _ = fmt.Fprintf(w, "no findings for target %s in scanned resources; %d skipped, results are partial\n", r.Target, len(r.Skipped))
@@ -42,16 +48,25 @@ func ScanText(w io.Writer, r apiscan.Result) error {
 
 func findingsTable(w io.Writer, r apiscan.Result) error {
 	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "KIND\tAPIVERSION\tNAMESPACE\tNAME\tREPLACEMENT\tREMOVED IN\tSEVERITY")
+	pathMode := r.Path != ""
+	header := "KIND\tAPIVERSION\tNAMESPACE\tNAME\tREPLACEMENT\tREMOVED IN\tSEVERITY"
+	if pathMode {
+		header += "\tORIGIN"
+	}
+	_, _ = fmt.Fprintln(tw, header)
 	for _, it := range r.Findings {
 		rule := it.Finding.Rule
 		removed := versionOrDash(rule.RemovedIn)
 		if rule.Scheduled() {
 			removed += " (scheduled)"
 		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		row := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s",
 			it.Object.Kind, it.Object.APIVersion, dash(it.Object.Namespace), it.Object.Name,
 			dash(rule.Replacement), removed, it.Finding.Severity)
+		if pathMode {
+			row += "\t" + it.Object.Origin
+		}
+		_, _ = fmt.Fprintln(tw, row)
 	}
 	return tw.Flush()
 }
@@ -106,18 +121,26 @@ type scanClusterJSON struct {
 type scanDoc struct {
 	SchemaVersion int               `json:"schemaVersion"`
 	Target        string            `json:"target"`
-	Cluster       scanClusterJSON   `json:"cluster"`
+	Path          string            `json:"path,omitempty"`
+	Cluster       *scanClusterJSON  `json:"cluster,omitempty"`
 	EKSCluster    string            `json:"eksCluster,omitempty"`
 	Findings      []findingJSON     `json:"findings"`
 	Skipped       []skippedItemJSON `json:"skipped"`
 	Unverified    int               `json:"unverified"`
+	FilesScanned  *int              `json:"filesScanned,omitempty"`
 }
 
 // ScanJSON writes the scan document (schemaVersion 1). findings and skipped
-// are always arrays; cluster and unverified are always present.
+// are always arrays; unverified is always present; cluster is present for live scans, path for manifest scans.
 func ScanJSON(w io.Writer, r apiscan.Result) error {
 	doc := scanDoc{SchemaVersion: schemaVersion, Target: r.Target.String(), Findings: []findingJSON{}, Skipped: []skippedItemJSON{},
-		Cluster: scanClusterJSON{Context: r.Cluster.Context, Server: r.Cluster.Server}, EKSCluster: r.Cluster.EKSCluster, Unverified: r.Unverified}
+		Path: r.Path, EKSCluster: r.Cluster.EKSCluster, Unverified: r.Unverified}
+	if r.Path == "" {
+		doc.Cluster = &scanClusterJSON{Context: r.Cluster.Context, Server: r.Cluster.Server}
+	} else {
+		n := r.FilesScanned
+		doc.FilesScanned = &n
+	}
 	for _, it := range r.Findings {
 		rule := it.Finding.Rule
 		doc.Findings = append(doc.Findings, findingJSON{
