@@ -1,0 +1,1 @@
+no findings for target 1.38 in scanned resources; 2 skipped, results are partial

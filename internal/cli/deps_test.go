@@ -1,11 +1,17 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
+	"k8s.io/client-go/rest"
 )
 
 func TestClientFactoryLoadsConfigOnceAndOverridesRegion(t *testing.T) {
@@ -48,5 +54,68 @@ func TestClientFactoryPassesRegionToConfigLoad(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != "eu-x" {
 		t.Errorf("load regions = %v, want [eu-x]", got)
+	}
+}
+
+func writeKubeconfig(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "config")
+	cfg := `apiVersion: v1
+kind: Config
+current-context: demo
+clusters:
+- name: demo
+  cluster: {server: "https://127.0.0.1:1"}
+contexts:
+- name: demo
+  context: {cluster: demo, user: demo}
+users:
+- name: demo
+  user: {token: not-a-real-token}
+`
+	if err := os.WriteFile(p, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestKubeRestConfigBoundsRequestsAndSilencesWarnings(t *testing.T) {
+	cfg, err := kubeRestConfig(writeKubeconfig(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Timeout != 30*time.Second {
+		t.Errorf("Timeout = %v, want 30s", cfg.Timeout)
+	}
+	if _, ok := cfg.WarningHandler.(rest.NoWarnings); !ok {
+		t.Errorf("WarningHandler = %T, want rest.NoWarnings", cfg.WarningHandler)
+	}
+}
+
+func TestKubeRestConfigUnknownContextIsOneLine(t *testing.T) {
+	_, err := kubeRestConfig(writeKubeconfig(t), "nope")
+	if err == nil || strings.Contains(err.Error(), "\n") {
+		t.Fatalf("err = %v, want one-line error", err)
+	}
+}
+
+func TestRealKubeMissingKubeconfigExitsTwoOneLine(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "absent")
+	t.Setenv("KUBECONFIG", missing)
+	t.Setenv("HOME", t.TempDir()) // belt-and-braces: RecommendedHomeFile is fixed at init
+	if _, _, err := realKube("", ""); err == nil || strings.Contains(err.Error(), "\n") {
+		t.Fatalf("err = %v, want one-line error", err)
+	}
+	var out, errOut bytes.Buffer
+	if code := Run([]string{"scan", "--target", "1.35"}, &out, &errOut); code != 2 {
+		t.Fatalf("exit = %d, want 2 (stderr %q)", code, errOut.String())
+	}
+	assertOneLine(t, errOut.String())
+}
+
+func TestRealKubeExplicitMissingKubeconfig(t *testing.T) {
+	_, _, err := realKube(filepath.Join(t.TempDir(), "absent"), "")
+	if err == nil || strings.Contains(err.Error(), "\n") {
+		t.Fatalf("err = %v, want one-line error", err)
 	}
 }

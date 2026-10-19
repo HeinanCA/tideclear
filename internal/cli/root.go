@@ -9,6 +9,8 @@ import (
 
 	"github.com/HeinanCA/tideclear/internal/eksinfo"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
 )
 
 // ErrBlockers signals that a scan found removed-API blockers (exit 1).
@@ -49,6 +51,12 @@ type Deps struct {
 	DefaultRegion func(profile string) (string, error)
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
+	// Kube builds Kubernetes clients for a kubeconfig path and context
+	// ("" = default loading rules and current context).
+	Kube func(kubeconfig, kubeContext string) (discovery.DiscoveryInterface, dynamic.Interface, error)
+	// KubeIdentity names the kube context and API server host a Kube call
+	// would use; nil or "" means unknown.
+	KubeIdentity func(kubeconfig, kubeContext string) (name, server string)
 }
 
 func newRootCmd(deps Deps, stdout, stderr io.Writer) *cobra.Command {
@@ -64,6 +72,7 @@ func newRootCmd(deps Deps, stdout, stderr io.Writer) *cobra.Command {
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.AddCommand(newClustersCmd(deps))
+	root.AddCommand(newScanCmd(deps))
 	return root
 }
 
