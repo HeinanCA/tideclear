@@ -24,25 +24,36 @@ func extrasText(w io.Writer, ex Extras) error {
 	if err := nodesSection(w, ex.Nodes); err != nil {
 		return err
 	}
-	if n := ex.unknowns(); n > 0 {
-		if _, err := fmt.Fprintf(w, "result not clean: %d unknown\n", n); err != nil {
-			return err
-		}
-	}
 	for _, s := range ex.Skipped {
 		if _, err := fmt.Fprintf(w, "check skipped: %s: %s\n", s.Check, s.Reason); err != nil {
 			return err
 		}
 	}
-	return nil
+	return footer(w, ex.unknowns(), len(ex.Skipped))
+}
+
+// footer is the closing line: how much of the result is unproven.
+func footer(w io.Writer, unknown, skipped int) error {
+	var parts []string
+	if unknown > 0 {
+		parts = append(parts, fmt.Sprintf("%d unknown", unknown))
+	}
+	if skipped > 0 {
+		parts = append(parts, fmt.Sprintf("%d checks skipped", skipped))
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	_, err := fmt.Fprintf(w, "result not clean: %s\n", strings.Join(parts, ", "))
+	return err
 }
 
 func insightsSection(w io.Writer, rows []reconcile.Row) error {
 	if len(rows) == 0 {
-		_, err := fmt.Fprintln(w, "upgrade insights: no deprecated API usage reported")
+		_, err := fmt.Fprint(w, "\nupgrade insights: no deprecated API usage reported\n")
 		return err
 	}
-	if _, err := fmt.Fprintln(w, "upgrade insights:"); err != nil {
+	if _, err := fmt.Fprint(w, "\nupgrade insights:\n"); err != nil {
 		return err
 	}
 	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)

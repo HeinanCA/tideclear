@@ -16,10 +16,10 @@ func addonsSection(w io.Writer, ran bool, rows []addons.Row) error {
 		if !ran {
 			return nil
 		}
-		_, err := fmt.Fprintln(w, "add-ons: none managed by EKS (self-managed add-ons are not checked)")
+		_, err := fmt.Fprint(w, "\nadd-ons: none managed by EKS (self-managed add-ons are not checked)\n")
 		return err
 	}
-	if _, err := fmt.Fprintln(w, "add-ons:"); err != nil {
+	if _, err := fmt.Fprint(w, "\nadd-ons:\n"); err != nil {
 		return err
 	}
 	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)

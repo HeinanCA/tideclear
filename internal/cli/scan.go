@@ -111,6 +111,9 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 	if err != nil {
 		return &ToolError{Err: err}
 	}
+	if n := strictBlockers(res, ex, fl.strict); n > 0 {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "tideclear: --strict: %d stale/unknown items count as blockers\n", n)
+	}
 	return exitFor(res, ex, fl.strict)
 }
 

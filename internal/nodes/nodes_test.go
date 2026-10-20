@@ -78,7 +78,7 @@ func TestAL2ManagedNodegroupSeverityByTarget(t *testing.T) {
 		current, target int
 		want            rules.Severity
 	}{{33, 34, rules.SeverityWarning}, {34, 35, rules.SeverityBlocker}} {
-		rows, _, err := CheckNodegroups(context.Background(), api, "demo", v(tc.current), v(tc.target), nr)
+		rows, _, _, err := CheckNodegroups(context.Background(), api, "demo", v(tc.current), v(tc.target), nr)
 		if err != nil || len(rows) != 1 {
 			t.Fatalf("target %d: rows=%v err=%v", tc.target, rows, err)
 		}
@@ -97,7 +97,7 @@ func TestCleanNodegroupsProduceNoRows(t *testing.T) {
 		ng("al2023", types.AMITypesAl2023X8664Standard, "1.31", "1.31.4-20250101"),
 		ng("br", types.AMITypesBottlerocketX8664, "1.31", "1.31.4-v1.30.0"),
 	}}
-	rows, groups, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
+	rows, groups, _, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
 	if err != nil || len(rows) != 0 || len(groups) != 2 {
 		t.Fatalf("rows=%v groups=%v err=%v", rows, groups, err)
 	}
@@ -105,7 +105,7 @@ func TestCleanNodegroupsProduceNoRows(t *testing.T) {
 
 func TestCustomNodegroupReleaseVersionIsNeverParsed(t *testing.T) {
 	api := &fakeNG{groups: []types.Nodegroup{ng("mine", types.AMITypesCustom, "1.31", "ami-0abc123def4567890")}}
-	rows, groups, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
+	rows, groups, _, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("rows=%+v err=%v, want none (no version warning for an AMI ID)", rows, err)
 	}
@@ -131,7 +131,7 @@ func TestNodegroupSkew(t *testing.T) {
 	for _, tc := range cases {
 		api := &fakeNG{groups: []types.Nodegroup{ng("g", types.AMITypesAl2023X8664Standard, tc.version, "r")}}
 		// target == current so only the control-plane comparison applies.
-		rows, _, err := CheckNodegroups(context.Background(), api, "demo", v(tc.current), v(tc.current), nr)
+		rows, _, _, err := CheckNodegroups(context.Background(), api, "demo", v(tc.current), v(tc.current), nr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -147,7 +147,7 @@ func TestNodegroupSkew(t *testing.T) {
 func TestNodegroupSkewAgainstTarget(t *testing.T) {
 	// 1.28 is 3 behind current 1.31 but 4 behind target 1.32.
 	api := &fakeNG{groups: []types.Nodegroup{ng("g", types.AMITypesAl2023X8664Standard, "1.28", "r")}}
-	rows, _, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
+	rows, _, _, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
 	if err != nil || len(rows) != 1 || rows[0].Severity != rules.SeverityWarning || !strings.Contains(strings.Join(rows[0].Reasons, ";"), "1.32") {
 		t.Fatalf("rows=%+v err=%v", rows, err)
 	}
@@ -157,12 +157,12 @@ func TestNodegroupPaginationAndError(t *testing.T) {
 	api := &fakeNG{groups: []types.Nodegroup{
 		ng("b", types.AMITypesAl2X8664, "1.31", "r"), ng("a", types.AMITypesAl2Arm64, "1.31", "r"),
 	}}
-	rows, _, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
+	rows, _, _, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
 	if err != nil || len(rows) != 2 || rows[0].Name != "a" || rows[1].Name != "b" || api.pages != 2 {
 		t.Fatalf("rows=%+v pages=%d err=%v", rows, api.pages, err)
 	}
 	boom := errors.New("boom")
-	_, _, err = CheckNodegroups(context.Background(), &fakeNG{listErr: boom}, "demo", v(31), v(32), mustRules(t))
+	_, _, _, err = CheckNodegroups(context.Background(), &fakeNG{listErr: boom}, "demo", v(31), v(32), mustRules(t))
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want wrapped boom", err)
 	}
@@ -255,7 +255,7 @@ func TestNodeOfUnreportedAMITypeGroupIsNotSkipped(t *testing.T) {
 
 func TestEmptyAMITypeNodegroupIsWarning(t *testing.T) {
 	api := &fakeNG{groups: []types.Nodegroup{ng("blank", "", "1.31", "r")}}
-	rows, groups, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
+	rows, groups, _, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
 	if err != nil || len(rows) != 1 || rows[0].Severity != rules.SeverityWarning || !slices.Contains(rows[0].Reasons, "AMI type not reported") {
 		t.Fatalf("rows=%+v err=%v", rows, err)
 	}
@@ -267,25 +267,36 @@ func TestEmptyAMITypeNodegroupIsWarning(t *testing.T) {
 func TestNodegroupDeletedBetweenListAndDescribeIsSkipped(t *testing.T) {
 	api := &fakeNG{groups: []types.Nodegroup{ng("a", types.AMITypesAl2Arm64, "1.31", "r"), ng("gone", types.AMITypesAl2X8664, "1.31", "r")},
 		describeErr: map[string]error{"gone": &types.ResourceNotFoundException{Message: aws.String("deleted")}}}
-	rows, groups, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
+	rows, groups, gone, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
 	if err != nil || len(rows) != 1 || rows[0].Name != "a" {
 		t.Fatalf("rows=%+v err=%v", rows, err)
+	}
+	if !slices.Equal(gone, []string{"gone"}) {
+		t.Errorf("deleted = %v, want [gone]", gone)
 	}
 	if _, ok := groups["gone"]; ok {
 		t.Errorf("deleted group reported as judged: %v", groups)
 	}
 	boom := errors.New("boom")
 	api.describeErr["gone"] = boom
-	if _, _, err = CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t)); !errors.Is(err, boom) {
+	if _, _, _, err = CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t)); !errors.Is(err, boom) {
 		t.Errorf("other describe errors must abort: %v", err)
 	}
 }
 
 func TestAL2ReasonExplainsTheBlocker(t *testing.T) {
 	rows := checkNodes(t, 35, true, nil, node("n1", nil, kubelet, al2OS))
-	want := "Amazon Linux 2 (osImage Amazon Linux 2) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane to 1.35"
+	want := "Amazon Linux 2 (osImage Amazon Linux 2) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane past 1.32"
 	if len(rows) != 1 || !slices.Contains(rows[0].Reasons, want) {
 		t.Fatalf("rows = %+v, want reason %q", rows, want)
+	}
+}
+
+func TestAL2ReasonAtTarget132IsWarningAndSaysPast(t *testing.T) {
+	rows := checkNodes(t, 32, true, nil, node("n1", nil, kubelet, al2OS))
+	want := "so these nodes cannot follow the control plane past 1.32"
+	if len(rows) != 1 || rows[0].Severity != rules.SeverityWarning || !strings.Contains(strings.Join(rows[0].Reasons, ";"), want) {
+		t.Fatalf("rows = %+v, want WARNING with %q", rows, want)
 	}
 }
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
@@ -15,9 +16,10 @@ var nodeGVR = schema.GroupVersionResource{Version: "v1", Resource: "nodes"}
 
 // nodegroupFake serves managed nodegroups; its zero value has none.
 type nodegroupFake struct {
-	groups []types.Nodegroup
-	ngErr  error // returned by ListNodegroups
-	ngHang bool  // ListNodegroups blocks until its context is done
+	groups   []types.Nodegroup
+	ngErr    error    // returned by ListNodegroups
+	ngHang   bool     // ListNodegroups blocks until its context is done
+	vanished []string // listed, but DescribeNodegroup says ResourceNotFound
 }
 
 func (f *nodegroupFake) ListNodegroups(ctx context.Context, _ *eks.ListNodegroupsInput, _ ...func(*eks.Options)) (*eks.ListNodegroupsOutput, error) {
@@ -28,7 +30,7 @@ func (f *nodegroupFake) ListNodegroups(ctx context.Context, _ *eks.ListNodegroup
 	if f.ngErr != nil {
 		return nil, f.ngErr
 	}
-	var names []string
+	names := slices.Clone(f.vanished)
 	for _, g := range f.groups {
 		names = append(names, aws.ToString(g.NodegroupName))
 	}
@@ -36,6 +38,9 @@ func (f *nodegroupFake) ListNodegroups(ctx context.Context, _ *eks.ListNodegroup
 }
 
 func (f *nodegroupFake) DescribeNodegroup(_ context.Context, in *eks.DescribeNodegroupInput, _ ...func(*eks.Options)) (*eks.DescribeNodegroupOutput, error) {
+	if slices.Contains(f.vanished, aws.ToString(in.NodegroupName)) {
+		return nil, &types.ResourceNotFoundException{Message: aws.String("deleted")}
+	}
 	for _, g := range f.groups {
 		if aws.ToString(g.NodegroupName) == aws.ToString(in.NodegroupName) {
 			return &eks.DescribeNodegroupOutput{Nodegroup: &g}, nil

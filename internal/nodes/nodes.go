@@ -47,28 +47,30 @@ type Row struct {
 // from the nodegroup Version only. It also returns the groups it judged (name
 // to amiType) so CheckNodes skips only nodes of those, and keeps the nodes of
 // CUSTOM or unreported-amiType groups, whose OS this check cannot judge. A
-// group deleted between list and describe is skipped; any other API failure
+// group deleted between list and describe is skipped and its name returned; any other API failure
 // aborts the check (wrapped, so it stays classifiable).
-func CheckNodegroups(ctx context.Context, api NodegroupAPI, cluster string, current, target rules.Version, nr *rules.NodeRules) ([]Row, map[string]string, error) {
+func CheckNodegroups(ctx context.Context, api NodegroupAPI, cluster string, current, target rules.Version, nr *rules.NodeRules) ([]Row, map[string]string, []string, error) {
 	var rows []Row
 	judged := map[string]string{}
+	var deleted []string
 	pages := eks.NewListNodegroupsPaginator(api, &eks.ListNodegroupsInput{ClusterName: aws.String(cluster)})
 	for pages.HasMorePages() {
 		page, err := pages.NextPage(ctx)
 		if err != nil {
-			return nil, nil, fmt.Errorf("list nodegroups for %s: %w", cluster, err)
+			return nil, nil, nil, fmt.Errorf("list nodegroups for %s: %w", cluster, err)
 		}
 		for _, name := range page.Nodegroups {
 			out, err := api.DescribeNodegroup(ctx, &eks.DescribeNodegroupInput{ClusterName: aws.String(cluster), NodegroupName: aws.String(name)})
 			var gone *types.ResourceNotFoundException
 			if errors.As(err, &gone) {
+				deleted = append(deleted, name)
 				continue
 			}
 			if err != nil {
-				return nil, nil, fmt.Errorf("describe nodegroup %s: %w", name, err)
+				return nil, nil, nil, fmt.Errorf("describe nodegroup %s: %w", name, err)
 			}
 			if out.Nodegroup == nil {
-				return nil, nil, fmt.Errorf("describe nodegroup %s: empty response", name)
+				return nil, nil, nil, fmt.Errorf("describe nodegroup %s: empty response", name)
 			}
 			g := out.Nodegroup
 			judged[name] = string(g.AmiType)
@@ -78,7 +80,7 @@ func CheckNodegroups(ctx context.Context, api NodegroupAPI, cluster string, curr
 		}
 	}
 	sortRows(rows)
-	return rows, judged, nil
+	return rows, judged, deleted, nil
 }
 
 func judgeNodegroup(name string, g *types.Nodegroup, current, target rules.Version, nr *rules.NodeRules) (Row, bool) {
@@ -135,8 +137,8 @@ func skipNode(n *unstructured.Unstructured, nr *rules.NodeRules, skipManaged boo
 	if v, ok := labels[nr.FargateLabelKey]; ok && v == nr.FargateLabelValue {
 		return true
 	}
-	ami, judged := groups[labels[nr.ManagedNodegroupLabel]]
-	return skipManaged && judged && ami != "" && ami != customAMIType
+	ami := groups[labels[nr.ManagedNodegroupLabel]]
+	return skipManaged && ami != "" && ami != customAMIType
 }
 
 func judgeNode(n *unstructured.Unstructured, current, target rules.Version, nr *rules.NodeRules) (Row, bool) {
