@@ -14,6 +14,7 @@ import (
 	"github.com/HeinanCA/tideclear/internal/report"
 	"github.com/HeinanCA/tideclear/internal/rules"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/dynamic"
 )
 
 // scanTimeout bounds a whole scan (a var so tests can shorten it).
@@ -78,7 +79,7 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 	if err != nil {
 		return &ToolError{Err: err}
 	}
-	src, err := newSource(cmd, deps, fl, set)
+	src, dyn, err := newSource(cmd, deps, fl, set)
 	if err != nil {
 		return &ToolError{Err: err}
 	}
@@ -89,7 +90,7 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 	ctx, cancel := context.WithTimeout(ctx, scanTimeout)
 	defer cancel()
 
-	tv, err := resolveTarget(ctx, deps, fl, src, target)
+	cur, tv, err := resolveTarget(ctx, deps, fl, src, target)
 	if err != nil {
 		return &ToolError{Err: interruptedOr(ctx, err)}
 	}
@@ -98,7 +99,7 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 		return &ToolError{Err: interruptedOr(ctx, err)}
 	}
 	annotate(cmd, deps, fl, &res)
-	ex, err := collectExtras(ctx, cmd.ErrOrStderr(), deps, fl, res, tv)
+	ex, err := collectExtras(ctx, cmd.ErrOrStderr(), deps, fl, res, cur, tv, dyn)
 	if err != nil {
 		return &ToolError{Err: interruptedOr(ctx, err)}
 	}
@@ -139,32 +140,34 @@ func parseScanFlags(fl scanFlags) (outputFormat, *rules.Version, error) {
 	return format, target, nil
 }
 
-func newSource(cmd *cobra.Command, deps Deps, fl scanFlags, set *rules.Set) (apiscan.Source, error) {
+// newSource builds the scan source; the dynamic client is nil for a --path scan.
+func newSource(cmd *cobra.Command, deps Deps, fl scanFlags, set *rules.Set) (apiscan.Source, dynamic.Interface, error) {
 	if fl.pathSet {
-		return apiscan.NewManifestSource(fl.path, cmd.ErrOrStderr()), nil
+		return apiscan.NewManifestSource(fl.path, cmd.ErrOrStderr()), nil, nil
 	}
 	disc, dyn, err := deps.Kube(fl.kubeconfig, fl.kubeContext)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return apiscan.NewClusterSource(disc, dyn, set), nil
+	return apiscan.NewClusterSource(disc, dyn, set), dyn, nil
 }
 
-// resolveTarget is the version the scan checks against: --target, else the
-// current version's next minor.
-func resolveTarget(ctx context.Context, deps Deps, fl scanFlags, src apiscan.Source, target *rules.Version) (rules.Version, error) {
+// resolveTarget returns the cluster's current version and the version the
+// scan checks against: --target, else the current version's next minor.
+// A --path scan without --cluster has no current version (zero value).
+func resolveTarget(ctx context.Context, deps Deps, fl scanFlags, src apiscan.Source, target *rules.Version) (current, tv rules.Version, err error) {
 	if fl.pathSet && fl.cluster == "" {
-		return *target, nil // checkPathFlags guarantees it; there is no current version to validate against
+		return rules.Version{}, *target, nil // checkPathFlags guarantees it; there is no current version to validate against
 	}
-	current, err := currentVersion(ctx, deps, fl, src)
+	current, err = currentVersion(ctx, deps, fl, src)
 	if err != nil {
-		return rules.Version{}, err
+		return rules.Version{}, rules.Version{}, err
 	}
-	tv := current.Next()
+	tv = current.Next()
 	if target != nil {
 		tv = *target
 	}
-	return tv, rules.ValidateTarget(current, tv)
+	return current, tv, rules.ValidateTarget(current, tv)
 }
 
 // annotate fills the result's cluster identity and echoes skipped groups to stderr.

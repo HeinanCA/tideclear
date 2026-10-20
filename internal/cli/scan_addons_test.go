@@ -234,8 +234,11 @@ func TestScanWithoutClusterNotesSkippedAddonsOnStdoutOnly(t *testing.T) {
 	if err := json.Unmarshal([]byte(js), &doc); err != nil {
 		t.Fatal(err)
 	}
-	if len(doc.ChecksSkipped) != 1 || doc.ChecksSkipped[0].Check != "addons" {
+	if len(doc.ChecksSkipped) != 2 || doc.ChecksSkipped[0].Check != "addons" || doc.ChecksSkipped[1].Check != "nodegroups" {
 		t.Fatalf("json doc = %+v", doc)
+	}
+	if !strings.Contains(out, "check skipped: nodegroups: needs --cluster") {
+		t.Fatalf("stdout lacks the nodegroups note:\n%s", out)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/HeinanCA/tideclear/internal/addons"
 	"github.com/HeinanCA/tideclear/internal/eksinfo"
 	"github.com/HeinanCA/tideclear/internal/insights"
+	"github.com/HeinanCA/tideclear/internal/nodes"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -50,6 +51,7 @@ func exitCode(err error) int {
 type ClusterAPI interface {
 	insights.API
 	addons.API
+	nodes.NodegroupAPI
 }
 
 // Deps holds the external adapters commands use; tests substitute fakes.

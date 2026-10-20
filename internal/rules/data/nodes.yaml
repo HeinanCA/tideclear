@@ -1,0 +1,41 @@
+# Node and AMI rules for `tideclear scan`. Strictly decoded: an unknown key is an error.
+# Update here, not in the checks. Sources were fetched on the dates shown.
+
+# EKS managed nodegroup amiType prefixes that mean Amazon Linux 2. "AL2_" with the
+# underscore: AL2023_* also starts with "AL2".
+amiFamilyPrefixes:
+  - AL2_
+
+# Node status.nodeInfo.osImage that means Amazon Linux 2. Anchored: "Amazon Linux 2023"
+# contains "Amazon Linux 2" but is not AL2.
+osImagePattern: '^Amazon Linux 2( |$)'
+
+# First Kubernetes version whose kubelet fails to start on cgroup v1 by default
+# (failCgroupV1 = true). Target >= this makes an AL2 node a BLOCKER, below it a WARNING.
+cgroupV2Required: "1.35"
+
+# Fargate nodes are AWS-managed; they are never reported.
+fargateLabel:
+  key: eks.amazonaws.com/compute-type
+  value: fargate
+
+# Label EKS puts on every managed-nodegroup node.
+managedNodegroupLabelKey: eks.amazonaws.com/nodegroup
+
+# Kubelet version skew: never newer than the control plane, at most this many minors older.
+skew:
+  maxMinorsOlder: 3
+
+sources:
+  - url: https://docs.aws.amazon.com/eks/latest/userguide/eks-ami-deprecation-faqs.html
+    fetched: "2026-10-20"
+    note: "Kubernetes version 1.32 is the last version for which Amazon EKS will release AL2 AMIs"
+  - url: https://kubernetes.io/blog/2026/10/06/kubernetes-cgroups-v2-shift/
+    fetched: "2026-10-20"
+    note: "kubelet failCgroupV1 defaults to true from Kubernetes 1.35"
+  - url: https://kubernetes.dev/resources/keps/5573
+    fetched: "2026-10-20"
+    note: "KEP-5573: kubelet failCgroupV1 defaults to true from 1.35"
+  - url: https://kubernetes.io/releases/version-skew-policy/
+    fetched: "2026-10-20"
+    note: "kubelet may be up to three minor versions older than kube-apiserver; must not be newer"

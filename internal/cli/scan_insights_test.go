@@ -31,6 +31,7 @@ const usageFlowSchema = "/apis/flowcontrol.apiserver.k8s.io/v1beta3/flowschemas"
 // deprecationAWS serves one deprecated-API insight with the given clients.
 type deprecationAWS struct {
 	addonFake
+	nodegroupFake
 	addonCompat []types.AddonCompatibilityDetail // the insight's add-on compatibility details
 	status      types.InsightStatusValue
 	clients     []types.ClientStat
@@ -96,7 +97,7 @@ func cleanCluster() cluster {
 	}}}
 	disc.FakedServerVersion = newCluster("1", "30").disc.FakedServerVersion
 	dyn := fakedyn.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
-		map[schema.GroupVersionResource]string{fsGVR: "FlowSchemaList"}, fs)
+		map[schema.GroupVersionResource]string{fsGVR: "FlowSchemaList", nodeGVR: "NodeList"}, fs)
 	return cluster{disc: disc, dyn: dyn}
 }
 

@@ -11,9 +11,11 @@ import (
 	"github.com/HeinanCA/tideclear/internal/apiscan"
 	"github.com/HeinanCA/tideclear/internal/eksinfo"
 	"github.com/HeinanCA/tideclear/internal/insights"
+	"github.com/HeinanCA/tideclear/internal/nodes"
 	"github.com/HeinanCA/tideclear/internal/reconcile"
 	"github.com/HeinanCA/tideclear/internal/report"
 	"github.com/HeinanCA/tideclear/internal/rules"
+	"k8s.io/client-go/dynamic"
 )
 
 // extrasTimeout bounds each EKS check in a scan (a var so tests can shorten it).
@@ -23,31 +25,49 @@ var extrasTimeout = eksinfo.DefaultRegionTimeout
 // fails for a non-credential reason degrades (a stderr line and a skipped
 // entry, the rest of the report intact); a credential failure or an
 // interrupted run is returned and exits 2. A --path scan has no cluster
-// reads at all. A live scan without --cluster notes the skipped add-on
-// check in the report (stdout and JSON), never on stderr.
-func collectExtras(ctx context.Context, stderr io.Writer, deps Deps, fl scanFlags, res apiscan.Result, target rules.Version) (report.Extras, error) {
-	switch {
-	case fl.pathSet:
+// reads at all. A live scan without --cluster notes the skipped add-on and
+// nodegroup checks in the report (stdout and JSON), never on stderr; the node
+// list runs on every live scan.
+func collectExtras(ctx context.Context, stderr io.Writer, deps Deps, fl scanFlags, res apiscan.Result, current, target rules.Version, dyn dynamic.Interface) (report.Extras, error) {
+	if fl.pathSet {
 		return report.Extras{}, nil
-	case fl.cluster == "":
-		return report.Extras{Skipped: []report.CheckSkipped{{Check: "addons", Reason: "needs --cluster"}}}, nil
 	}
-	regions, err := resolveRegions(deps, fl.profile, fl.region, false)
+	nr, err := rules.LoadNodes()
 	if err != nil {
 		return report.Extras{}, err
+	}
+	var ex report.Extras
+	var ng nodegroupState
+	if fl.cluster == "" {
+		ex.Skipped = []report.CheckSkipped{{Check: "addons", Reason: "needs --cluster"}, {Check: "nodegroups", Reason: "needs --cluster"}}
+	} else if ex, ng, err = clusterExtras(ctx, stderr, deps, fl, res, current, target, nr); err != nil {
+		return ex, err
+	}
+	return nodesExtras(ctx, stderr, dyn, current, target, nr, ng, ex)
+}
+
+// clusterExtras runs the checks that read the EKS cluster: insights (when
+// asked), add-ons and managed nodegroups.
+func clusterExtras(ctx context.Context, stderr io.Writer, deps Deps, fl scanFlags, res apiscan.Result, current, target rules.Version, nr *rules.NodeRules) (report.Extras, nodegroupState, error) {
+	regions, err := resolveRegions(deps, fl.profile, fl.region, false)
+	if err != nil {
+		return report.Extras{}, nodegroupState{}, err
 	}
 	api, err := deps.Cluster(fl.profile, regions[0])
 	if err != nil {
-		return report.Extras{}, err
+		return report.Extras{}, nodegroupState{}, err
 	}
 	var ex report.Extras
 	var compat []insights.AddonCompat
 	if fl.insights {
 		if ex, compat, err = insightsExtras(ctx, stderr, api, deps, fl, res, target); err != nil {
-			return ex, err
+			return ex, nodegroupState{}, err
 		}
 	}
-	return addonsExtras(ctx, stderr, api, fl, target, ex, compat)
+	if ex, err = addonsExtras(ctx, stderr, api, fl, target, ex, compat); err != nil {
+		return ex, nodegroupState{}, err
+	}
+	return nodegroupExtras(ctx, stderr, api, fl, current, target, nr, ex)
 }
 
 // addonsExtras adds the add-on check, bounded by extrasTimeout; the ctx.Err()
@@ -106,7 +126,7 @@ func insightsExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, deps 
 }
 
 // exitFor is the scan's verdict: ErrBlockers on any live BLOCKER finding or
-// BLOCKER reconcile row; with strict, also on STALE or UNKNOWN reconcile rows
+// BLOCKER reconcile row or node row; with strict, also on STALE or UNKNOWN reconcile rows
 // and UNKNOWN add-on rows. A skipped check and an incompatible add-on (a
 // WARNING) never count.
 func exitFor(res apiscan.Result, ex report.Extras, strict bool) error {
@@ -114,6 +134,9 @@ func exitFor(res apiscan.Result, ex report.Extras, strict bool) error {
 		if it.Finding.Severity == rules.SeverityBlocker {
 			return ErrBlockers
 		}
+	}
+	if slices.ContainsFunc(ex.Nodes, func(r nodes.Row) bool { return r.Severity == rules.SeverityBlocker }) {
+		return ErrBlockers
 	}
 	for _, r := range ex.Insights {
 		switch r.Verdict {
