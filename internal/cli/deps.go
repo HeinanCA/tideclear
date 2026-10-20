@@ -121,7 +121,13 @@ func loadAWSConfig(profile, region string) (aws.Config, error) {
 	if profile != "" {
 		opts = append(opts, config.WithSharedConfigProfile(profile))
 	}
-	return config.LoadDefaultConfig(context.Background(), opts...)
+	cfg, err := config.LoadDefaultConfig(context.Background(), opts...)
+	if err != nil {
+		return cfg, err
+	}
+	// Outside the SDK's cache, so caching stays; the EKS client does not tag provider failures itself.
+	cfg.Credentials = eksinfo.WrapCredentials(cfg.Credentials)
+	return cfg, nil
 }
 
 // cachedConfig loads the AWS config once per profile, with the first

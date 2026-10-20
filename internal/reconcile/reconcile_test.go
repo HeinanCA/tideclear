@@ -204,11 +204,45 @@ func TestM1ActiveWindowIsMeasuredFromLastRefresh(t *testing.T) {
 	}
 }
 
-func TestM1ZeroLastRefreshFallsBackToNow(t *testing.T) {
+func TestZeroLastRefreshStaleBecomesUnknown(t *testing.T) {
 	in := insight(insights.StatusError, usageFS, client("ctl", 1, ago(ActiveWindow+time.Second)))
 	in.LastRefresh = time.Time{}
-	if r := Reconcile([]insights.Insight{in}, scanned(), now)[0]; r.Verdict != VerdictStale {
-		t.Fatalf("verdict = %s (%s), want STALE", r.Verdict, r.Reason)
+	r := Reconcile([]insights.Insight{in}, scanned(), now)[0]
+	if r.Verdict != VerdictUnknown || r.ClearsOn != nil || !strings.Contains(r.Reason, "insight has no refresh time") {
+		t.Fatalf("row = %s %q clears=%v, want UNKNOWN no refresh time", r.Verdict, r.Reason, r.ClearsOn)
+	}
+	// A client within the window of now still blocks (zero refresh falls back to now).
+	in.Deprecations[0].Clients = []insights.Client{client("ctl", 1, ago(time.Hour))}
+	if r := Reconcile([]insights.Insight{in}, scanned(), now)[0]; r.Verdict != VerdictBlocker {
+		t.Fatalf("active client: verdict = %s (%s), want BLOCKER", r.Verdict, r.Reason)
+	}
+}
+
+func TestPassingNeedsFreshInsightData(t *testing.T) {
+	cases := []struct {
+		name    string
+		refresh time.Time
+		want    Verdict
+		reason  string
+	}{
+		{"fresh", now.Add(-time.Hour), VerdictOK, ""},
+		{"zero", time.Time{}, VerdictUnknown, "insight has no refresh time"},
+		{"too old", now.Add(-ActiveWindow - time.Minute), VerdictUnknown, "insight data too old"},
+		{"future", now.Add(time.Minute), VerdictUnknown, "insight refresh time is in the future"},
+	}
+	for _, c := range cases {
+		in := insight(insights.StatusPassing, usageFS)
+		in.LastRefresh = c.refresh
+		r := Reconcile([]insights.Insight{in}, scanned(), now)[0]
+		if r.Verdict != c.want || !strings.Contains(r.Reason, c.reason) {
+			t.Errorf("%s: row = %s %q, want %s", c.name, r.Verdict, r.Reason, c.want)
+		}
+	}
+	// Live objects still block a PASSING insight regardless of freshness.
+	in := insight(insights.StatusPassing, usageFS)
+	in.LastRefresh = time.Time{}
+	if r := Reconcile([]insights.Insight{in}, scanned(fsObject), now)[0]; r.Verdict != VerdictBlocker {
+		t.Fatalf("live object: verdict = %s, want BLOCKER", r.Verdict)
 	}
 }
 

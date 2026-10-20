@@ -44,7 +44,9 @@ func insightsExtras(ctx context.Context, stderr io.Writer, deps Deps, fl scanFla
 			now = deps.Now
 		}
 		ex.Insights = reconcile.Reconcile(ins, res, now())
-		if !slices.ContainsFunc(ins, reconcile.IsDeprecatedInsight) {
+		if !slices.ContainsFunc(ins, func(in insights.Insight) bool {
+			return in.Target == target.String() && reconcile.IsDeprecatedInsight(in)
+		}) {
 			ex.Insights = append(ex.Insights, reconcile.MissingInsight(target.String()))
 		}
 	case eksinfo.IsCredentialFailure(err), ctx.Err() != nil:

@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/HeinanCA/tideclear/internal/eksinfo"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/smithy-go"
@@ -37,16 +37,22 @@ type deprecationAWS struct {
 	name        string // insight name; default "Deprecated APIs removed in Kubernetes v1.32"
 	none        bool   // ListInsights returns no insights at all
 	noSummary   bool   // DescribeInsight returns no category summary
+	target      string // insight target version; default echoes the request filter
 }
 
-func (f *deprecationAWS) ListInsights(context.Context, *eks.ListInsightsInput, ...func(*eks.Options)) (*eks.ListInsightsOutput, error) {
+func (f *deprecationAWS) ListInsights(_ context.Context, in *eks.ListInsightsInput, _ ...func(*eks.Options)) (*eks.ListInsightsOutput, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
 	if f.none {
 		return &eks.ListInsightsOutput{}, nil
 	}
-	return &eks.ListInsightsOutput{Insights: []types.InsightSummary{insightSummary("i1", f.insightName(), f.status, fixedNow.Add(-time.Hour))}}, nil
+	sum := insightSummary("i1", f.insightName(), f.status, fixedNow.Add(-time.Hour))
+	sum.KubernetesVersion = aws.String(f.target)
+	if f.target == "" && in.Filter != nil && len(in.Filter.KubernetesVersions) > 0 {
+		sum.KubernetesVersion = aws.String(in.Filter.KubernetesVersions[0])
+	}
+	return &eks.ListInsightsOutput{Insights: []types.InsightSummary{sum}}, nil
 }
 
 func (f *deprecationAWS) DescribeInsight(context.Context, *eks.DescribeInsightInput, ...func(*eks.Options)) (*eks.DescribeInsightOutput, error) {
@@ -265,15 +271,41 @@ func TestScanInsightsDetaillessDeprecatedAPIInsightIsUnknown(t *testing.T) {
 	}
 }
 
+// realClientErr is what a real EKS client returns when the (wrapped) credential provider fails.
+func realClientErr(t *testing.T) error {
+	t.Helper()
+	failing := aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
+		return aws.Credentials{}, errors.New("the SSO session associated with this profile has expired or is otherwise invalid")
+	})
+	c := eks.New(eks.Options{Region: "us-east-1", Credentials: eksinfo.WrapCredentials(failing),
+		HTTPClient: deadHTTP{}, RetryMaxAttempts: 1})
+	_, err := c.ListInsights(context.Background(), &eks.ListInsightsInput{ClusterName: aws.String("demo-cluster")})
+	if err == nil {
+		t.Fatal("ListInsights succeeded offline")
+	}
+	return err
+}
+
+type deadHTTP struct{}
+
+func (deadHTTP) Do(*http.Request) (*http.Response, error) { return nil, errors.New("network down") }
+
 func TestScanInsightsCredentialProviderFailureExitsTwo(t *testing.T) {
-	cause := errors.New("the SSO session associated with this profile has expired or is otherwise invalid")
-	api := &deprecationAWS{listErr: &smithy.OperationError{ServiceID: eks.ServiceID, OperationName: "ListInsights",
-		Err: &v4.SigningError{Err: fmt.Errorf("failed to retrieve credentials: %w", cause)}}}
+	api := &deprecationAWS{listErr: realClientErr(t)}
 	exit, out, se := insightScan(t, api)
-	if exit != 2 || out != "" {
-		t.Fatalf("exit=%d stdout=%q", exit, out)
+	if exit != 2 || out != "" || !strings.Contains(se, "SSO session") {
+		t.Fatalf("exit=%d stdout=%q stderr=%q", exit, out, se)
 	}
 	assertOneLine(t, se)
+}
+
+func TestScanInsightsOtherVersionInsightDoesNotSatisfyMissingGuard(t *testing.T) {
+	api := &deprecationAWS{status: types.InsightStatusValuePassing, target: "1.32"} // scan target is 1.31
+	code, out, _ := insightScan(t, api)
+	if code != 0 || !strings.Contains(out, "no deprecated-API insight returned for target 1.31") ||
+		!strings.Contains(out, "result not clean") {
+		t.Fatalf("exit=%d stdout:\n%s", code, out)
+	}
 }
 
 func TestScanInsightsNoDeprecatedAPIInsightIsUnknown(t *testing.T) {
