@@ -20,8 +20,8 @@ func nodesSection(w io.Writer, rows []nodes.Row) error {
 	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "SOURCE\tNAME\tVERSION\tAMI\tRELEASE\tOS IMAGE\tSEVERITY\tREASONS")
 	for _, r := range rows {
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Source, r.Name, dash(r.Version), dash(r.AMIType),
-			dash(r.ReleaseVersion), dash(r.OSImage), r.Severity, strings.Join(r.Reasons, "; "))
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Source, plain(r.Name), dash(r.Version), dash(r.AMIType),
+			dash(plain(r.ReleaseVersion)), dash(plain(r.OSImage)), r.Severity, strings.Join(r.Reasons, "; "))
 	}
 	return tw.Flush()
 }
