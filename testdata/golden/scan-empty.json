@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "target": "1.38",
+  "cluster": {
+    "context": "",
+    "server": ""
+  },
+  "findings": [],
+  "skipped": [],
+  "unverified": 0
+}

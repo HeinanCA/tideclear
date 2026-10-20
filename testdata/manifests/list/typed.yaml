@@ -1,0 +1,8 @@
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudgetList
+items:
+  - metadata:
+      name: api
+      namespace: demo
+    spec:
+      minAvailable: 1
