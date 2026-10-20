@@ -39,3 +39,37 @@ func TestIsAccessDenied(t *testing.T) {
 		}
 	}
 }
+
+func TestIsCredentialFailure(t *testing.T) {
+	apiErr := func(code string) error {
+		return &smithy.OperationError{ServiceID: eks.ServiceID, OperationName: "ListInsights",
+			Err: &smithy.GenericAPIError{Code: code, Message: "m"}}
+	}
+	nestedSTS := &smithy.OperationError{ServiceID: eks.ServiceID, OperationName: "ListInsights",
+		Err: fmt.Errorf("get credentials: %w", &smithy.OperationError{ServiceID: "STS", OperationName: "AssumeRole",
+			Err: &smithy.GenericAPIError{Code: "AccessDenied", Message: "not authorized"}})}
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"credential retrieval", nestedSTS, true},
+		{"UnrecognizedClientException", apiErr("UnrecognizedClientException"), true},
+		{"InvalidClientTokenId", apiErr("InvalidClientTokenId"), true},
+		{"ExpiredToken", apiErr("ExpiredToken"), true},
+		{"ExpiredTokenException", apiErr("ExpiredTokenException"), true},
+		{"RequestExpired", apiErr("RequestExpired"), true},
+		{"InvalidSignatureException", apiErr("InvalidSignatureException"), true},
+		{"SignatureDoesNotMatch", apiErr("SignatureDoesNotMatch"), true},
+		{"AuthFailure", apiErr("AuthFailure"), true},
+		{"AccessDeniedException is a permission, not a credential", apiErr("AccessDeniedException"), false},
+		{"throttle", apiErr("ThrottlingException"), false},
+		{"plain error", errors.New("boom"), false},
+		{"nil", nil, false},
+	}
+	for _, c := range cases {
+		if got := IsCredentialFailure(c.err); got != c.want {
+			t.Errorf("%s: IsCredentialFailure = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

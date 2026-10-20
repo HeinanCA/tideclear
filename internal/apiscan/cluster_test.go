@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -147,7 +148,7 @@ func TestEvidenceRule(t *testing.T) {
 				t.Fatalf("findings = %+v, want 1", res.Findings)
 			}
 			o := res.Findings[0].Object
-			want := Object{APIVersion: tc.wantAPIVer, Kind: "Ingress", Namespace: "demo", Name: "web", Origin: tc.wantOrigin}
+			want := Object{APIVersion: tc.wantAPIVer, Kind: "Ingress", Namespace: "demo", Name: "web", Origin: tc.wantOrigin, Resource: "ingresses"}
 			if o != want {
 				t.Fatalf("object = %+v, want %+v", o, want)
 			}
@@ -328,5 +329,22 @@ func TestServerVersionUnreachableIsError(t *testing.T) {
 	})
 	if _, _, err := NewClusterSource(disc, dyn, mustSet(t)).ServerVersion(context.Background()); err == nil {
 		t.Fatal("want error")
+	}
+}
+
+func TestListedRecordsOnlyKindsReadInFull(t *testing.T) {
+	disc, dyn := ingressCluster(ingress("web", ""))
+	res := scan(t, disc, dyn, ver(1, 31))
+	want := []Listed{{Group: "networking.k8s.io", Resource: "ingresses", Kind: "Ingress"}}
+	if !reflect.DeepEqual(res.Listed, want) {
+		t.Fatalf("Listed = %+v, want %+v", res.Listed, want)
+	}
+
+	disc, dyn = ingressCluster(ingress("web", ""))
+	dyn.PrependReactor("list", "ingresses", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewForbidden(schema.GroupResource{Group: "networking.k8s.io", Resource: "ingresses"}, "", errors.New("no"))
+	})
+	if res := scan(t, disc, dyn, ver(1, 31)); len(res.Listed) != 0 || len(res.Skipped) != 1 {
+		t.Fatalf("forbidden kind: Listed=%+v Skipped=%+v, want none listed, one skipped", res.Listed, res.Skipped)
 	}
 }

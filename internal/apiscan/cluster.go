@@ -159,6 +159,7 @@ func (c *clusterSource) readGroup(ctx context.Context, g metav1.APIGroup, wanted
 			case err == nil:
 				obs.Objects = append(obs.Objects, got...)
 				obs.Unverified += unverified
+				obs.Listed = append(obs.Listed, Listed{Group: g.Name, Resource: r.Name, Kind: r.Kind})
 			case apierrors.IsForbidden(err):
 				obs.Skipped = append(obs.Skipped, Skipped{Group: g.Name, Kind: r.Kind, Reason: err.Error()})
 			default:
@@ -195,7 +196,7 @@ func (c *clusterSource) listPages(ctx context.Context, gvr schema.GroupVersionRe
 			return nil, 0, err
 		}
 		for i := range l.Items {
-			ev := evidence(&l.Items[i], kind)
+			ev := evidence(&l.Items[i], kind, gvr.Resource)
 			if len(ev) == 0 {
 				unverified++
 			}

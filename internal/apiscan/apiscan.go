@@ -14,7 +14,14 @@ type Object struct {
 	APIVersion, Kind, Namespace, Name string
 	// Origin says where the apiVersion evidence came from.
 	Origin string
+	// Resource is the plural resource name (a live scan only; manifests leave
+	// it empty). It is stable across the versions a group serves, so it joins
+	// an object to an Upgrade Insights usage path.
+	Resource string
 }
+
+// Listed is a kind the scan read successfully, so "no object found" is proof.
+type Listed struct{ Group, Resource, Kind string }
 
 // Skipped is a group or kind left out of a scan (Kind empty = whole group).
 type Skipped struct{ Group, Kind, Reason string }
@@ -26,6 +33,8 @@ type Observed struct {
 	Objects    []Object
 	Skipped    []Skipped
 	Unverified int
+	// Listed is the kinds a live scan read in full (manifest sources leave it empty).
+	Listed []Listed
 	// FilesScanned counts the manifest files a path scan read.
 	FilesScanned int
 }
@@ -55,6 +64,7 @@ type Result struct {
 	Findings     []ResultItem
 	Skipped      []Skipped
 	Unverified   int
+	Listed       []Listed
 	FilesScanned int
 }
 
@@ -65,7 +75,7 @@ func Scan(ctx context.Context, src Source, set *rules.Set, target rules.Version)
 	if err != nil {
 		return Result{}, err
 	}
-	res := Result{Target: target, Skipped: obs.Skipped, Unverified: obs.Unverified, FilesScanned: obs.FilesScanned}
+	res := Result{Target: target, Skipped: obs.Skipped, Unverified: obs.Unverified, Listed: obs.Listed, FilesScanned: obs.FilesScanned}
 	for _, o := range obs.Objects {
 		if f, ok := set.Match(o.APIVersion, o.Kind, target); ok {
 			res.Findings = append(res.Findings, ResultItem{Object: o, Finding: f})
