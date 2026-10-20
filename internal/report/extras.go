@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/HeinanCA/tideclear/internal/addons"
+	"github.com/HeinanCA/tideclear/internal/nodes"
 	"github.com/HeinanCA/tideclear/internal/reconcile"
 )
 
@@ -15,8 +16,9 @@ type CheckSkipped struct{ Check, Reason string }
 type Extras struct {
 	Insights    []reconcile.Row
 	Addons      []addons.Row
-	AddonsRan   bool // the add-on check ran, so the section shows even when empty
-	InsightsRan bool // --insights was given, so the section shows even when empty
+	Nodes       []nodes.Row // findings only; the section is omitted when empty
+	AddonsRan   bool        // the add-on check ran, so the section shows even when empty
+	InsightsRan bool        // --insights was given, so the section shows even when empty
 	Skipped     []CheckSkipped
 }
 
@@ -41,6 +43,7 @@ func (e Extras) unknowns() int {
 type extrasJSON struct {
 	Insights      *[]insightRowJSON  `json:"insights,omitempty"`
 	Addons        *[]addonRowJSON    `json:"addons,omitempty"`
+	Nodes         []nodeRowJSON      `json:"nodes,omitempty"`
 	ChecksSkipped []checkSkippedJSON `json:"checksSkipped,omitempty"`
 }
 
@@ -92,6 +95,9 @@ func (e Extras) json() extrasJSON {
 			rows = append(rows, addonJSON(r))
 		}
 		out.Addons = &rows
+	}
+	for _, r := range e.Nodes {
+		out.Nodes = append(out.Nodes, nodeJSON(r))
 	}
 	for _, s := range e.Skipped {
 		out.ChecksSkipped = append(out.ChecksSkipped, checkSkippedJSON(s))

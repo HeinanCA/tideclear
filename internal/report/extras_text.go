@@ -21,6 +21,9 @@ func extrasText(w io.Writer, ex Extras) error {
 	if err := addonsSection(w, ex.AddonsRan, ex.Addons); err != nil {
 		return err
 	}
+	if err := nodesSection(w, ex.Nodes); err != nil {
+		return err
+	}
 	if n := ex.unknowns(); n > 0 {
 		if _, err := fmt.Fprintf(w, "result not clean: %d unknown\n", n); err != nil {
 			return err
