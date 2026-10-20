@@ -2,6 +2,8 @@ package report
 
 import (
 	"bytes"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/HeinanCA/tideclear/internal/addons"
@@ -50,5 +52,26 @@ func TestAddonsOmittedWhenEmpty(t *testing.T) {
 	_ = ScanJSON(&plainJS, scanSample(t), Extras{})
 	if !bytes.Equal(txt.Bytes(), plainTxt.Bytes()) || !bytes.Equal(js.Bytes(), plainJS.Bytes()) {
 		t.Errorf("empty add-ons changed the output:\n%s\n%s", txt.String(), js.String())
+	}
+}
+
+func TestAddonsRanWithNoneSaysSo(t *testing.T) {
+	var txt, js bytes.Buffer
+	ex := Extras{AddonsRan: true}
+	if err := ScanText(&txt, scanSample(t), ex); err != nil {
+		t.Fatal(err)
+	}
+	if err := ScanJSON(&js, scanSample(t), ex); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(txt.String(), "add-ons: none managed by EKS (self-managed add-ons are not checked)\n") {
+		t.Errorf("text lacks the none line:\n%s", txt.String())
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(js.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if string(m["addons"]) != "[]" {
+		t.Errorf("addons = %s, want []", m["addons"])
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/HeinanCA/tideclear/internal/eksinfo"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -26,10 +27,15 @@ type fakeAddon struct {
 type addonFake struct {
 	addons   []fakeAddon
 	addonErr error // returned by ListAddons
+	hang     bool  // ListAddons blocks until its context is done
 	asked    []string
 }
 
-func (f *addonFake) ListAddons(context.Context, *eks.ListAddonsInput, ...func(*eks.Options)) (*eks.ListAddonsOutput, error) {
+func (f *addonFake) ListAddons(ctx context.Context, _ *eks.ListAddonsInput, _ ...func(*eks.Options)) (*eks.ListAddonsOutput, error) {
+	if f.hang {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	if f.addonErr != nil {
 		return nil, f.addonErr
 	}
@@ -248,5 +254,63 @@ func TestScanPathNeverTouchesAddons(t *testing.T) {
 	}
 	if len(api.asked) != 0 {
 		t.Fatalf("add-on API called during a --path scan: %v", api.asked)
+	}
+}
+
+func shortExtrasTimeout(t *testing.T) {
+	t.Helper()
+	old, oldScan := extrasTimeout, scanTimeout
+	extrasTimeout, scanTimeout = 30*time.Millisecond, 2*time.Second
+	t.Cleanup(func() { extrasTimeout, scanTimeout = old, oldScan })
+}
+
+func TestScanAddonsHangDegradesInsteadOfLosingTheReport(t *testing.T) {
+	shortExtrasTimeout(t)
+	api := &fakeAWS{addonFake: addonFake{hang: true}}
+	exit, out, se := addonScan(t, api)
+	if exit != 0 || out == "" {
+		t.Fatalf("exit=%d stdout=%q stderr=%q, want 0 with the report", exit, out, se)
+	}
+	assertOneLine(t, se)
+	if !strings.Contains(se, "addons check skipped") || !strings.Contains(out, "check skipped: addons") {
+		t.Errorf("stderr=%q stdout:\n%s", se, out)
+	}
+}
+
+type hangInsightsAWS struct{ deprecationAWS }
+
+func (h *hangInsightsAWS) ListInsights(ctx context.Context, _ *eks.ListInsightsInput, _ ...func(*eks.Options)) (*eks.ListInsightsOutput, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestScanInsightsHangDegradesToUnavailableRow(t *testing.T) {
+	shortExtrasTimeout(t)
+	exit, out, se := insightScan(t, &hangInsightsAWS{})
+	if exit != 0 {
+		t.Fatalf("exit=%d stderr=%q stdout:\n%s", exit, se, out)
+	}
+	assertOneLine(t, se)
+	if !strings.Contains(se, "insights check skipped") || !strings.Contains(out, "UNKNOWN") || !strings.Contains(out, "check skipped: insights") {
+		t.Errorf("stderr=%q stdout:\n%s", se, out)
+	}
+}
+
+func TestScanAddonsNoneManagedSaysSo(t *testing.T) {
+	_, out, _ := addonScan(t, &fakeAWS{})
+	if !strings.Contains(out, "add-ons: none managed by EKS (self-managed add-ons are not checked)") {
+		t.Fatalf("stdout:\n%s", out)
+	}
+	_, js, _ := addonScan(t, &fakeAWS{}, "--output", "json")
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(js), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if string(doc["addons"]) != "[]" {
+		t.Fatalf("addons = %s, want []", doc["addons"])
+	}
+	_, js, _ = run(t, kubeDeps(t, cleanCluster()), "scan", "--output", "json")
+	if strings.Contains(js, `"addons":`) {
+		t.Errorf("scan without --cluster has an addons key:\n%s", js)
 	}
 }

@@ -5,10 +5,12 @@ package addons
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
+	"github.com/HeinanCA/tideclear/internal/eksinfo"
 	"github.com/HeinanCA/tideclear/internal/insights"
 	"github.com/HeinanCA/tideclear/internal/rules"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -47,8 +49,9 @@ type Row struct {
 }
 
 // Check reads every add-on on the cluster and judges its current version
-// against target. Any API error aborts the check (wrapped, so credential
-// failures stay classifiable); nothing partial is returned.
+// against target. A ListAddons failure, a credential failure or a context
+// error aborts the check (wrapped, so they stay classifiable) and nothing
+// partial is returned; any other per-add-on failure is that add-on's UNKNOWN row.
 func Check(ctx context.Context, api API, cluster string, target rules.Version) ([]Row, error) {
 	var rows []Row
 	pages := eks.NewListAddonsPaginator(api, &eks.ListAddonsInput{ClusterName: aws.String(cluster)})
@@ -68,10 +71,25 @@ func Check(ctx context.Context, api API, cluster string, target rules.Version) (
 	return rows, nil
 }
 
+// fatal reports errors that must stop the whole check rather than mark one add-on UNKNOWN.
+func fatal(ctx context.Context, err error) bool {
+	return eksinfo.IsCredentialFailure(err) || ctx.Err() != nil ||
+		errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func unknownRow(name string, err error) Row {
+	return Row{Name: name, Status: StatusUnknown,
+		Reason: strings.Join(strings.FieldsFunc(err.Error(), func(r rune) bool { return r == '\n' || r == '\r' }), "; ")}
+}
+
 func checkOne(ctx context.Context, api API, cluster, name string, target rules.Version) (Row, error) {
 	d, err := api.DescribeAddon(ctx, &eks.DescribeAddonInput{ClusterName: aws.String(cluster), AddonName: aws.String(name)})
 	if err != nil {
-		return Row{}, fmt.Errorf("describe add-on %s: %w", name, err)
+		err = fmt.Errorf("describe add-on %s: %w", name, err)
+		if fatal(ctx, err) {
+			return Row{}, err
+		}
+		return unknownRow(name, err), nil
 	}
 	current := ""
 	if d != nil && d.Addon != nil {
@@ -79,7 +97,12 @@ func checkOne(ctx context.Context, api API, cluster, name string, target rules.V
 	}
 	supported, err := supportedVersions(ctx, api, name, target)
 	if err != nil {
-		return Row{}, err
+		if fatal(ctx, err) {
+			return Row{}, err
+		}
+		row := unknownRow(name, err)
+		row.Current = current
+		return row, nil
 	}
 	return judge(name, current, supported, target), nil
 }
@@ -102,7 +125,9 @@ func supportedVersions(ctx context.Context, api API, name string, target rules.V
 				if slices.ContainsFunc(v.Compatibilities, func(c types.Compatibility) bool {
 					return aws.ToString(c.ClusterVersion) == target.String()
 				}) {
-					out = append(out, aws.ToString(v.AddonVersion))
+					if ver := aws.ToString(v.AddonVersion); ver != "" {
+						out = append(out, ver)
+					}
 				}
 			}
 		}
@@ -126,9 +151,21 @@ func judge(name, current string, supported []string, target rules.Version) Row {
 	default:
 		row.Status = StatusIncompatible
 		row.Severity = SeverityIncompatible
-		row.MinCompatible = slices.MaxFunc(supported, func(a, b string) int { return -compareVersion(a, b) })
+		setUpgrade(&row, supported, target)
 	}
 	return row
+}
+
+// setUpgrade suggests the lowest compatible version strictly newer than the
+// current one; an older version is never an upgrade.
+func setUpgrade(row *Row, supported []string, target rules.Version) {
+	newer := slices.DeleteFunc(slices.Clone(supported), func(v string) bool { return compareVersion(v, row.Current) <= 0 })
+	if len(newer) == 0 {
+		newest := slices.MaxFunc(supported, compareVersion)
+		row.Reason = fmt.Sprintf("no compatible version newer than %s; newest for %s is %s", row.Current, target, newest)
+		return
+	}
+	row.MinCompatible = slices.MinFunc(newer, compareVersion)
 }
 
 // CrossCheck notes where the upgrade insight disagrees with the direct

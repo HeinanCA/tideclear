@@ -16,6 +16,9 @@ import (
 	"github.com/HeinanCA/tideclear/internal/rules"
 )
 
+// extrasTimeout bounds each EKS check in a scan (a var so tests can shorten it).
+var extrasTimeout = eksinfo.DefaultRegionTimeout
+
 // collectExtras runs the optional checks a scan was asked for. A check that
 // fails for a non-credential reason degrades (a stderr line and a skipped
 // entry, the rest of the report intact); a credential failure or an
@@ -47,16 +50,19 @@ func collectExtras(ctx context.Context, stderr io.Writer, deps Deps, fl scanFlag
 	return addonsExtras(ctx, stderr, api, fl, target, ex, compat)
 }
 
-// addonsExtras adds the add-on check. The insight's add-on view is only
+// addonsExtras adds the add-on check, bounded by extrasTimeout; the ctx.Err()
+// test below is on the parent, so only a parent cancel or timeout is fatal. The insight's add-on view is only
 // cross-checked when insights ran; the direct check always wins.
 func addonsExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, fl scanFlags, target rules.Version, ex report.Extras, compat []insights.AddonCompat) (report.Extras, error) {
-	rows, err := addons.Check(ctx, api, fl.cluster, target)
+	callCtx, cancel := context.WithTimeout(ctx, extrasTimeout)
+	defer cancel()
+	rows, err := addons.Check(callCtx, api, fl.cluster, target)
 	switch {
 	case err == nil:
 		if fl.insights {
 			rows = addons.CrossCheck(rows, compat)
 		}
-		ex.Addons = rows
+		ex.Addons, ex.AddonsRan = rows, true
 	case eksinfo.IsCredentialFailure(err), ctx.Err() != nil:
 		return ex, fmt.Errorf("read add-ons for %s: %w", fl.cluster, err)
 	default:
@@ -69,7 +75,9 @@ func addonsExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, fl scan
 
 func insightsExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, deps Deps, fl scanFlags, res apiscan.Result, target rules.Version) (report.Extras, []insights.AddonCompat, error) {
 	ex := report.Extras{InsightsRan: true}
-	ins, err := insights.Load(ctx, api, fl.cluster, &target)
+	callCtx, cancel := context.WithTimeout(ctx, extrasTimeout)
+	defer cancel()
+	ins, err := insights.Load(callCtx, api, fl.cluster, &target)
 	switch {
 	case err == nil:
 		now := time.Now
