@@ -83,7 +83,7 @@ func (l Lister) List(ctx context.Context, regions []string, name string) ([]Clus
 			all = append(all, cs...)
 		case errors.As(err, &ce):
 			return nil, nil, ce.err
-		case multi && (isAuthError(err) || isTimeout(err)):
+		case multi && !isCredentialError(err) && (isAuthError(err) || isTimeout(err)):
 			skipped = append(skipped, SkippedRegion{Region: r, Err: err})
 		default:
 			return nil, nil, fmt.Errorf("region %s: %w", r, err)

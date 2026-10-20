@@ -34,10 +34,11 @@ type deprecationAWS struct {
 	clients     []types.ClientStat
 	listErr     error
 	describeErr error
-	name        string // insight name; default "Deprecated APIs removed in Kubernetes v1.32"
-	none        bool   // ListInsights returns no insights at all
-	noSummary   bool   // DescribeInsight returns no category summary
-	target      string // insight target version; default echoes the request filter
+	name        string     // insight name; default "Deprecated APIs removed in Kubernetes v1.32"
+	none        bool       // ListInsights returns no insights at all
+	noSummary   bool       // DescribeInsight returns no category summary
+	target      string     // insight target version; default echoes the request filter
+	refresh     *time.Time // insight LastRefreshTime; default one hour before fixedNow
 }
 
 func (f *deprecationAWS) ListInsights(_ context.Context, in *eks.ListInsightsInput, _ ...func(*eks.Options)) (*eks.ListInsightsOutput, error) {
@@ -48,6 +49,9 @@ func (f *deprecationAWS) ListInsights(_ context.Context, in *eks.ListInsightsInp
 		return &eks.ListInsightsOutput{}, nil
 	}
 	sum := insightSummary("i1", f.insightName(), f.status, fixedNow.Add(-time.Hour))
+	if f.refresh != nil {
+		sum.LastRefreshTime = f.refresh
+	}
 	sum.KubernetesVersion = aws.String(f.target)
 	if f.target == "" && in.Filter != nil && len(in.Filter.KubernetesVersions) > 0 {
 		sum.KubernetesVersion = aws.String(in.Filter.KubernetesVersions[0])
