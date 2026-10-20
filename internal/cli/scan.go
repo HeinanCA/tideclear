@@ -47,7 +47,7 @@ func newScanCmd(deps Deps) *cobra.Command {
 			"UNKNOWN. If insights cannot be read the rest of the report still prints, with an\n" +
 			"UNKNOWN row; expired or invalid credentials exit 2.\n\n" +
 			"Exit codes: 0 clean (warnings allowed), 1 blockers (--strict: also STALE and\n" +
-			"UNKNOWN insight rows), 2 tool or connection error.\n" +
+			"UNKNOWN insight rows and UNKNOWN add-on rows), 2 tool or connection error.\n" +
 			"Groups or kinds that cannot be read are reported on stderr and in the JSON\n" +
 			"\"skipped\" list; the exit code reflects only what was scanned.",
 		Args: cobra.NoArgs,
@@ -65,7 +65,7 @@ func newScanCmd(deps Deps) *cobra.Command {
 	f.StringVar(&fl.region, "region", "", "AWS region (with --cluster)")
 	f.StringVar(&fl.path, "path", "", "scan manifests under this file or directory instead of a live cluster")
 	f.BoolVar(&fl.insights, "insights", false, "also read EKS Upgrade Insights and reconcile them with the scan (needs --cluster, not --path)")
-	f.BoolVar(&fl.strict, "strict", false, "exit 1 on STALE or UNKNOWN reconcile rows as well as blockers")
+	f.BoolVar(&fl.strict, "strict", false, "STALE or UNKNOWN insight rows and UNKNOWN add-on rows count as blockers (exit 1)")
 	f.StringVar(&fl.output, "output", "text", "output format: text|json (table is an alias of text)")
 	return cmd
 }

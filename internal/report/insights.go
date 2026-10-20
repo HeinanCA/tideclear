@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"text/tabwriter"
 	"time"
@@ -26,19 +27,27 @@ func InsightsText(w io.Writer, ins []insights.Insight, now time.Time) error {
 	}
 	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "NAME\tTARGET\tSTATUS\tREFRESHED")
-	stale := false
 	for _, in := range ins {
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", in.Name, dash(in.Target), in.Status, refreshed(in.LastRefresh, now))
-		stale = stale || (!in.LastRefresh.IsZero() && now.Sub(in.LastRefresh) > staleAfter)
 	}
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	if !stale {
+	if !RefreshStale(ins, now) {
 		return nil
 	}
-	_, err := fmt.Fprintln(w, `hint: some insights were refreshed more than 24h ago; use the console "Refresh insights" button for current data`)
+	_, err := fmt.Fprintln(w, refreshHint)
 	return err
+}
+
+// refreshHint points at the console button; tideclear never starts a refresh itself.
+const refreshHint = `hint: some insights were refreshed more than 24h ago; use the console "Refresh insights" button for current data`
+
+// RefreshStale reports that any insight with a refresh time was refreshed more than 24h before now.
+func RefreshStale(ins []insights.Insight, now time.Time) bool {
+	return slices.ContainsFunc(ins, func(in insights.Insight) bool {
+		return !in.LastRefresh.IsZero() && now.Sub(in.LastRefresh) > staleAfter
+	})
 }
 
 func refreshed(t, now time.Time) string {

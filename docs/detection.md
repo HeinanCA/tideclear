@@ -94,8 +94,9 @@ refresh that is 3 days old is still active.
 **Freshness gate.** `OK` and `STALE` need a refresh time that exists, is not in the future, and
 is at most 7 days old. Without that, the call dates cannot be trusted and the row is `UNKNOWN`.
 
-tideclear never calls `StartInsightsRefresh`. The `insights` command prints a hint to use the
-console "Refresh insights" button when data is more than 24 hours old.
+tideclear never calls `StartInsightsRefresh`. The `insights` command and the insights table of
+`scan --insights` print a hint to use the console "Refresh insights" button when an insight was
+refreshed more than 24 hours ago.
 
 If the insights cannot be read, the rest of the report still prints and the section shows one
 `UNKNOWN` row. Expired or invalid credentials exit 2.

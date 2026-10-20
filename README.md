@@ -107,7 +107,8 @@ comes from EKS; otherwise it comes from the API server. `AWS_PROFILE`, `AWS_REGI
 `insights` lists the `UPGRADE_READINESS` insights of one cluster: name, target version, status
 and how long ago EKS refreshed it. `--target` limits it to one version; without it, all
 versions are listed. If any insight was refreshed more than 24 hours ago, a hint points you to
-the console "Refresh insights" button. tideclear never calls `StartInsightsRefresh`, because it
+the console "Refresh insights" button. `scan --insights` prints the same hint under its insights
+table. tideclear never calls `StartInsightsRefresh`, because it
 is a write call.
 
 `scan --insights` reads the insights for the target version and reconciles them with the live

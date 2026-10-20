@@ -17,6 +17,11 @@ func extrasText(w io.Writer, ex Extras) error {
 		if err := insightsSection(w, ex.Insights); err != nil {
 			return err
 		}
+		if ex.RefreshStale {
+			if _, err := fmt.Fprintln(w, refreshHint); err != nil {
+				return err
+			}
+		}
 	}
 	if err := addonsSection(w, ex.AddonsRan, ex.Addons); err != nil {
 		return err
