@@ -228,10 +228,57 @@ func TestM2UnverifiedObjectsTurnStaleIntoUnknown(t *testing.T) {
 	if r.Verdict != VerdictUnknown || r.ClearsOn != nil || !strings.Contains(r.Reason, "3 objects of this resource had no apiVersion evidence") {
 		t.Fatalf("row = %s %q clears=%v", r.Verdict, r.Reason, r.ClearsOn)
 	}
-	// An active client still blocks, and a PASSING insight is not downgraded.
+	// An active client still blocks.
 	active := insight(insights.StatusError, usageFS, client("ctl", 1, ago(time.Hour)))
 	if r := Reconcile([]insights.Insight{active}, res, now)[0]; r.Verdict != VerdictBlocker {
 		t.Fatalf("active: verdict = %s", r.Verdict)
+	}
+	// A PASSING insight stays OK even with unverified objects.
+	passing := insight(insights.StatusPassing, usageFS)
+	if r := Reconcile([]insights.Insight{passing}, res, now)[0]; r.Verdict != VerdictOK {
+		t.Fatalf("passing: verdict = %s (%s), want OK", r.Verdict, r.Reason)
+	}
+}
+
+func TestStaleNeedsFreshInsightData(t *testing.T) {
+	cases := []struct {
+		name    string
+		refresh time.Time
+		want    Verdict
+		reason  string
+	}{
+		{"fresh", now.Add(-time.Hour), VerdictStale, ""},
+		{"too old", now.Add(-ActiveWindow - time.Minute), VerdictUnknown, "insight data too old"},
+		{"future", now.Add(time.Minute), VerdictUnknown, "insight refresh time is in the future"},
+	}
+	for _, c := range cases {
+		callTime := c.refresh.Add(-10 * 24 * time.Hour)
+		in := insight(insights.StatusError, usageFS, client("ctl", 1, &callTime))
+		in.LastRefresh = c.refresh
+		r := Reconcile([]insights.Insight{in}, scanned(), now)[0]
+		if r.Verdict != c.want || !strings.Contains(r.Reason, c.reason) || (c.want == VerdictUnknown && r.ClearsOn != nil) {
+			t.Errorf("%s: row = %s %q clears=%v", c.name, r.Verdict, r.Reason, r.ClearsOn)
+		}
+	}
+}
+
+func TestIsDeprecatedInsightIsCaseInsensitive(t *testing.T) {
+	for name, want := range map[string]bool{
+		"Deprecated APIs removed in Kubernetes v1.32": true,
+		"deprecated apis removed in kubernetes v1.32": true,
+		"Kubelet version skew":                        false,
+		"":                                            false,
+	} {
+		if got := IsDeprecatedInsight(insights.Insight{Name: name}); got != want {
+			t.Errorf("%q: got %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestMissingInsightRow(t *testing.T) {
+	r := MissingInsight("1.32")
+	if r.Verdict != VerdictUnknown || r.Reason != "no deprecated-API insight returned for target 1.32" {
+		t.Fatalf("row = %+v", r)
 	}
 }
 

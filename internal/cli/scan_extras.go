@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/HeinanCA/tideclear/internal/apiscan"
@@ -43,6 +44,9 @@ func insightsExtras(ctx context.Context, stderr io.Writer, deps Deps, fl scanFla
 			now = deps.Now
 		}
 		ex.Insights = reconcile.Reconcile(ins, res, now())
+		if !slices.ContainsFunc(ins, reconcile.IsDeprecatedInsight) {
+			ex.Insights = append(ex.Insights, reconcile.MissingInsight(target.String()))
+		}
 	case eksinfo.IsCredentialFailure(err), ctx.Err() != nil:
 		return ex, fmt.Errorf("read insights for %s: %w", fl.cluster, err)
 	default:

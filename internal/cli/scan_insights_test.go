@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/smithy-go"
@@ -32,13 +34,17 @@ type deprecationAWS struct {
 	clients     []types.ClientStat
 	listErr     error
 	describeErr error
-	name        string // insight name; default "Deprecated API usage"
+	name        string // insight name; default "Deprecated APIs removed in Kubernetes v1.32"
+	none        bool   // ListInsights returns no insights at all
 	noSummary   bool   // DescribeInsight returns no category summary
 }
 
 func (f *deprecationAWS) ListInsights(context.Context, *eks.ListInsightsInput, ...func(*eks.Options)) (*eks.ListInsightsOutput, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
+	}
+	if f.none {
+		return &eks.ListInsightsOutput{}, nil
 	}
 	return &eks.ListInsightsOutput{Insights: []types.InsightSummary{insightSummary("i1", f.insightName(), f.status, fixedNow.Add(-time.Hour))}}, nil
 }
@@ -59,7 +65,7 @@ func (f *deprecationAWS) insightName() string {
 	if f.name != "" {
 		return f.name
 	}
-	return "Deprecated API usage"
+	return "Deprecated APIs removed in Kubernetes v1.32"
 }
 
 func callAt(ua string, n int32, ago time.Duration) types.ClientStat {
@@ -259,10 +265,42 @@ func TestScanInsightsDetaillessDeprecatedAPIInsightIsUnknown(t *testing.T) {
 	}
 }
 
-func TestScanInsightsOtherDetaillessInsightIsNotARow(t *testing.T) {
-	api := &deprecationAWS{status: types.InsightStatusValueError, name: "Kubelet version skew", noSummary: true}
+func TestScanInsightsCredentialProviderFailureExitsTwo(t *testing.T) {
+	cause := errors.New("the SSO session associated with this profile has expired or is otherwise invalid")
+	api := &deprecationAWS{listErr: &smithy.OperationError{ServiceID: eks.ServiceID, OperationName: "ListInsights",
+		Err: &v4.SigningError{Err: fmt.Errorf("failed to retrieve credentials: %w", cause)}}}
+	exit, out, se := insightScan(t, api)
+	if exit != 2 || out != "" {
+		t.Fatalf("exit=%d stdout=%q", exit, out)
+	}
+	assertOneLine(t, se)
+}
+
+func TestScanInsightsNoDeprecatedAPIInsightIsUnknown(t *testing.T) {
+	cases := map[string]*deprecationAWS{
+		"zero insights":            {none: true},
+		"only other insights":      {status: types.InsightStatusValueError, name: "Kubelet version skew", noSummary: true},
+		"other insight is passing": {status: types.InsightStatusValuePassing, name: "Kubelet version skew"},
+	}
+	for name, api := range cases {
+		t.Run(name, func(t *testing.T) {
+			code, out, _ := insightScan(t, api)
+			if code != 0 || !strings.Contains(out, "result not clean: 1 unknown") ||
+				!strings.Contains(out, "no deprecated-API insight returned for target 1.31") ||
+				strings.Contains(out, "no deprecated API usage reported") {
+				t.Fatalf("exit=%d stdout:\n%s", code, out)
+			}
+			if code, _, _ := insightScan(t, api, "--strict"); code != 1 {
+				t.Fatalf("--strict exit = %d, want 1", code)
+			}
+		})
+	}
+}
+
+func TestScanInsightsDeprecatedNameMatchIsCaseInsensitive(t *testing.T) {
+	api := &deprecationAWS{status: types.InsightStatusValuePassing, name: "deprecated apis removed in kubernetes v1.32", noSummary: true}
 	code, out, _ := insightScan(t, api, "--strict")
-	if code != 0 || strings.Contains(out, "result not clean") {
+	if code != 0 || strings.Contains(out, "result not clean") || !strings.Contains(out, "no deprecated API usage reported") {
 		t.Fatalf("exit=%d stdout:\n%s", code, out)
 	}
 }
