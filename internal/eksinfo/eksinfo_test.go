@@ -471,3 +471,24 @@ func TestListClientConstructionErrorNotRegionPrefixed(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestDaysUntilCountsCalendarDaysInUTC(t *testing.T) {
+	end := time.Date(2026, 12, 2, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		now  time.Time
+		want int
+	}{
+		{"morning of the same calendar span", time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC), 43},
+		{"midnight", time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC), 43},
+		{"late evening", time.Date(2026, 10, 20, 23, 59, 0, 0, time.UTC), 43},
+		{"end day itself", time.Date(2026, 12, 2, 15, 0, 0, 0, time.UTC), 0},
+		{"one day past, afternoon", time.Date(2026, 12, 3, 15, 0, 0, 0, time.UTC), -1},
+		{"non-UTC clock, same instant", time.Date(2026, 10, 20, 10, 0, 0, 0, time.FixedZone("UTC+2", 2*3600)), 43},
+	}
+	for _, tt := range tests {
+		if got := daysUntil(end, tt.now); got != tt.want {
+			t.Errorf("%s: daysUntil = %d, want %d", tt.name, got, tt.want)
+		}
+	}
+}
