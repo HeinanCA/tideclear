@@ -2,16 +2,19 @@ package report
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/HeinanCA/tideclear/internal/addons"
 	"github.com/HeinanCA/tideclear/internal/reconcile"
 )
 
-func fullSample() Extras {
-	ex := insightsSample()
-	ex.Addons, ex.AddonsRan = addonsSample().Addons, true
-	ex.Nodes = nodesSample().Nodes
+func fullSample(t *testing.T) Extras {
+	t.Helper()
+	ex := insightsSample(t)
+	ex.Addons, ex.AddonsRan = addonsSample(t).Addons, true
+	ex.Nodes = nodesSample(t).Nodes
 	return ex
 }
 
@@ -30,10 +33,10 @@ func degradedSample() Extras {
 
 func TestScanFullGolden(t *testing.T) {
 	var txt, js bytes.Buffer
-	if err := ScanText(&txt, scanSample(t), fullSample()); err != nil {
+	if err := ScanText(&txt, w2Scan(t), fullSample(t)); err != nil {
 		t.Fatal(err)
 	}
-	if err := ScanJSON(&js, scanSample(t), fullSample()); err != nil {
+	if err := ScanJSON(&js, w2Scan(t), fullSample(t)); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan-full.txt", txt.Bytes())
@@ -42,10 +45,10 @@ func TestScanFullGolden(t *testing.T) {
 
 func TestScanDegradedGolden(t *testing.T) {
 	var txt, js bytes.Buffer
-	if err := ScanText(&txt, scanSample(t), degradedSample()); err != nil {
+	if err := ScanText(&txt, w2Scan(t), degradedSample()); err != nil {
 		t.Fatal(err)
 	}
-	if err := ScanJSON(&js, scanSample(t), degradedSample()); err != nil {
+	if err := ScanJSON(&js, w2Scan(t), degradedSample()); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan-degraded.txt", txt.Bytes())
@@ -54,7 +57,7 @@ func TestScanDegradedGolden(t *testing.T) {
 
 func TestScanTextSectionOrderAndSpacing(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanText(&b, scanSample(t), fullSample()); err != nil {
+	if err := ScanText(&b, w2Scan(t), fullSample(t)); err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()
@@ -67,7 +70,7 @@ func TestScanTextSectionOrderAndSpacing(t *testing.T) {
 		last = i
 	}
 	b.Reset()
-	if err := ScanText(&b, scanSample(t), Extras{}); err != nil || strings.Contains(b.String(), "\n\n") {
+	if err := ScanText(&b, w2Scan(t), Extras{}); err != nil || strings.Contains(b.String(), "\n\n") {
 		t.Fatalf("plain scan must have no blank line: err=%v\n%s", err, b.String())
 	}
 }
@@ -75,6 +78,8 @@ func TestScanTextSectionOrderAndSpacing(t *testing.T) {
 func TestScanTextFooterCounts(t *testing.T) {
 	skip := []CheckSkipped{{Check: "a", Reason: "r"}, {Check: "b", Reason: "r"}}
 	unknown := []reconcile.Row{{Verdict: reconcile.VerdictUnknown}}
+	stale := []reconcile.Row{{Verdict: reconcile.VerdictStale}, {Verdict: reconcile.VerdictStale}}
+	oneSkip := skip[:1]
 	for _, tc := range []struct {
 		name string
 		ex   Extras
@@ -82,11 +87,15 @@ func TestScanTextFooterCounts(t *testing.T) {
 	}{
 		{"unknown only", Extras{InsightsRan: true, Insights: unknown}, "result not clean: 1 unknown\n"},
 		{"skipped only", Extras{Skipped: skip}, "result not clean: 2 checks skipped\n"},
+		{"one skipped", Extras{Skipped: oneSkip}, "result not clean: 1 check skipped\n"},
+		{"stale only", Extras{InsightsRan: true, Insights: stale}, "result not clean: 2 stale\n"},
+		{"stale unknown skipped", Extras{InsightsRan: true, Insights: append(slices.Clone(stale), unknown...), Skipped: oneSkip},
+			"result not clean: 2 stale, 1 unknown, 1 check skipped\n"},
 		{"both", Extras{InsightsRan: true, Insights: unknown, Skipped: skip}, "result not clean: 1 unknown, 2 checks skipped\n"},
 		{"neither", Extras{InsightsRan: true}, ""},
 	} {
 		var b bytes.Buffer
-		if err := ScanText(&b, scanSample(t), tc.ex); err != nil {
+		if err := ScanText(&b, w2Scan(t), tc.ex); err != nil {
 			t.Fatal(err)
 		}
 		out := b.String()
@@ -105,7 +114,7 @@ func TestScanTextFooterCounts(t *testing.T) {
 func TestScanJSONKeyPresence(t *testing.T) {
 	keys := func(ex Extras) string {
 		var b bytes.Buffer
-		if err := ScanJSON(&b, scanSample(t), ex); err != nil {
+		if err := ScanJSON(&b, w2Scan(t), ex); err != nil {
 			t.Fatal(err)
 		}
 		return b.String()
@@ -125,6 +134,32 @@ func TestScanJSONKeyPresence(t *testing.T) {
 	for _, k := range []string{`"insights"`, `"addons"`, `"nodes"`, `"checksSkipped"`} {
 		if strings.Contains(plain, k) {
 			t.Errorf("zero Extras added %s", k)
+		}
+	}
+}
+
+func TestStrictItemsCountsStaleUnknownAndAddonUnknown(t *testing.T) {
+	ex := Extras{
+		Insights: []reconcile.Row{{Verdict: reconcile.VerdictStale}, {Verdict: reconcile.VerdictUnknown},
+			{Verdict: reconcile.VerdictOK}, {Verdict: reconcile.VerdictBlocker}},
+		Addons:  []addons.Row{{Status: addons.StatusUnknown}, {Status: addons.StatusOK}, {Status: addons.StatusIncompatible}},
+		Skipped: []CheckSkipped{{Check: "nodes", Reason: "x"}},
+	}
+	if got := ex.StrictItems(); got != 3 {
+		t.Errorf("StrictItems = %d, want 3", got)
+	}
+	if got := (Extras{}).StrictItems(); got != 0 {
+		t.Errorf("zero Extras StrictItems = %d", got)
+	}
+}
+
+func TestPlural(t *testing.T) {
+	for _, c := range []struct {
+		n    int
+		want string
+	}{{0, "0 checks skipped"}, {1, "1 check skipped"}, {2, "2 checks skipped"}} {
+		if got := Plural(c.n, "check skipped", "checks skipped"); got != c.want {
+			t.Errorf("Plural(%d) = %q, want %q", c.n, got, c.want)
 		}
 	}
 }

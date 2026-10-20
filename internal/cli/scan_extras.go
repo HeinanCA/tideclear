@@ -135,16 +135,11 @@ func exitFor(res apiscan.Result, ex report.Extras, strict bool) error {
 		return ErrBlockers
 	}
 	for _, r := range ex.Insights {
-		switch r.Verdict {
-		case reconcile.VerdictBlocker:
+		if r.Verdict == reconcile.VerdictBlocker {
 			return ErrBlockers
-		case reconcile.VerdictStale, reconcile.VerdictUnknown:
-			if strict {
-				return ErrBlockers
-			}
 		}
 	}
-	if strict && slices.ContainsFunc(ex.Addons, func(r addons.Row) bool { return r.Status == addons.StatusUnknown }) {
+	if strict && ex.StrictItems() > 0 {
 		return ErrBlockers
 	}
 	return nil
@@ -157,16 +152,5 @@ func strictBlockers(res apiscan.Result, ex report.Extras, strict bool) int {
 	if !strict || exitFor(res, ex, false) != nil {
 		return 0
 	}
-	n := 0
-	for _, r := range ex.Insights {
-		if r.Verdict == reconcile.VerdictStale || r.Verdict == reconcile.VerdictUnknown {
-			n++
-		}
-	}
-	for _, r := range ex.Addons {
-		if r.Status == addons.StatusUnknown {
-			n++
-		}
-	}
-	return n
+	return ex.StrictItems()
 }

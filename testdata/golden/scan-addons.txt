@@ -1,9 +1,8 @@
 cluster: demo-ctx (api.example.test) [EKS: demo-cluster]
-KIND            APIVERSION                            NAMESPACE  NAME             REPLACEMENT                      REMOVED IN        SEVERITY
-DeviceClass     resource.k8s.io/v1beta1               -          tideclear-probe  resource.k8s.io/v1               1.38 (projected)  WARNING
-FlowSchema      flowcontrol.apiserver.k8s.io/v1beta3  -          web              flowcontrol.apiserver.k8s.io/v1  1.32              BLOCKER
-Ingress         extensions/v1beta1                    demo       web              networking.k8s.io/v1             1.22              BLOCKER
-LeaseCandidate  coordination.k8s.io/v1beta1           demo       api              -                                1.39 (projected)  WARNING
+KIND         APIVERSION                            NAMESPACE  NAME             REPLACEMENT                      REMOVED IN        SEVERITY
+DeviceClass  resource.k8s.io/v1beta1               -          tideclear-probe  resource.k8s.io/v1               1.38 (projected)  WARNING
+FlowSchema   flowcontrol.apiserver.k8s.io/v1beta3  -          web              flowcontrol.apiserver.k8s.io/v1  1.32              BLOCKER
+Ingress      extensions/v1beta1                    demo       web              networking.k8s.io/v1             1.22              BLOCKER
 warning: 2 groups/kinds skipped (see stderr); results are partial
 3 objects had no apiVersion evidence and were not checked
 
@@ -11,6 +10,6 @@ add-ons:
 NAME        CURRENT            MIN COMPATIBLE     STATUS                  NOTE
 demo-dns    v1.1.0-eksbuild.1  -                  OK                      -
 demo-net    v1.0.0-eksbuild.1  v1.2.0-eksbuild.1  INCOMPATIBLE (WARNING)  insight lists this version as compatible; direct check says not
-demo-agent  v3.0.0             -                  UNKNOWN                 no version of this add-on lists Kubernetes 1.32 as compatible
+demo-agent  v3.0.0             -                  UNKNOWN                 no version of this add-on lists Kubernetes 1.35 as compatible
 check skipped: nodes: access denied
-result not clean: 1 unknown, 1 checks skipped
+result not clean: 1 unknown, 1 check skipped
