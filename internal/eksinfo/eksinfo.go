@@ -188,16 +188,15 @@ func clusterVersions(ctx context.Context, api EKSAPI, name string) ([]named, err
 // versionInfo fetches support data for the versions in use, keyed by version.
 func versionInfo(ctx context.Context, api EKSAPI, cs []named) (map[string]types.ClusterVersionInformation, error) {
 	inUse := map[string]bool{}
-	var list []string
 	for _, c := range cs {
-		if c.version != "" && !inUse[c.version] {
+		if c.version != "" {
 			inUse[c.version] = true
-			list = append(list, c.version)
 		}
 	}
+	// The API accepts only one of defaultOnly, clusterVersions, includeAll or status.
+	// includeAll also returns unsupported versions; filter to the ones in use below.
 	p := eks.NewDescribeClusterVersionsPaginator(api, &eks.DescribeClusterVersionsInput{
-		ClusterVersions: list,
-		IncludeAll:      aws.Bool(true),
+		IncludeAll: aws.Bool(true),
 	})
 	info := map[string]types.ClusterVersionInformation{}
 	for p.HasMorePages() {
@@ -227,7 +226,7 @@ func buildCluster(c named, region string, v types.ClusterVersionInformation, fou
 		end = std
 	}
 	if !end.IsZero() {
-		d := int(end.Sub(now) / (24 * time.Hour))
+		d := daysUntil(end, now)
 		out.DaysLeft = &d
 	}
 	out.OnExtended = out.Support == SupportExtended
@@ -290,4 +289,13 @@ func isCredentialError(err error) bool {
 		}
 	}
 	return false
+}
+
+// daysUntil counts calendar days in UTC from now to end; negative once end has passed.
+func daysUntil(end, now time.Time) int {
+	day := func(t time.Time) time.Time {
+		u := t.UTC()
+		return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
+	}
+	return int(day(end).Sub(day(now)) / (24 * time.Hour))
 }
