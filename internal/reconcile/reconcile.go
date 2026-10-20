@@ -133,6 +133,9 @@ func one(in insights.Insight, d insights.Deprecation, res apiscan.Result, now ti
 		row.Verdict, row.Reason, row.Clients = VerdictUnknown, "insight status UNKNOWN", nil
 	case in.Status == insights.StatusPassing:
 		row.Verdict, row.Clients = VerdictOK, nil
+		if why := untrusted(in.LastRefresh, now); why != "" {
+			row.Verdict, row.Reason = VerdictUnknown, why
+		}
 	default:
 		clientVerdict(&row, listed, hasListed, in.LastRefresh, now)
 	}
@@ -142,10 +145,11 @@ func one(in insights.Insight, d insights.Deprecation, res apiscan.Result, now ti
 // clientVerdict applies rules 4 to 6 from the counted clients' call times. A
 // client is active when it called within ActiveWindow of the insight's
 // LastRefresh (now when EKS gave none): the call times are as old as that refresh.
-// A would-be STALE needs a refresh within ActiveWindow of now and not in the
+// A would-be STALE needs a known refresh within ActiveWindow of now and not in the
 // future, else the call dates cannot be trusted and the verdict is UNKNOWN.
 func clientVerdict(row *Row, listed apiscan.Listed, hasListed bool, refresh, now time.Time) {
 	stored := refresh
+	why := untrusted(stored, now)
 	if refresh.IsZero() {
 		refresh = now
 	}
@@ -166,14 +170,26 @@ func clientVerdict(row *Row, listed apiscan.Listed, hasListed bool, refresh, now
 		row.Verdict, row.Reason = VerdictUnknown, "not scanned live: the live scan did not read this resource"
 	case listed.Unverified > 0:
 		row.Verdict, row.Reason = VerdictUnknown, fmt.Sprintf("%d objects of this resource had no apiVersion evidence", listed.Unverified)
-	case !stored.IsZero() && stored.After(now):
-		row.Verdict, row.Reason = VerdictUnknown, "insight refresh time is in the future"
-	case !stored.IsZero() && now.Sub(stored) > ActiveWindow:
-		row.Verdict, row.Reason = VerdictUnknown, "insight data too old"
+	case why != "":
+		row.Verdict, row.Reason = VerdictUnknown, why
 	default:
 		clears := newest.Add(AuditWindow)
 		row.Verdict, row.ClearsOn, row.Reason = VerdictStale, &clears, "last call is older than 7 days before the insight refreshed"
 	}
+}
+
+// untrusted says why an insight's refresh time cannot vouch for its data (none,
+// in the future, older than ActiveWindow), or "" when it can. Both OK and STALE need it.
+func untrusted(refresh, now time.Time) string {
+	switch {
+	case refresh.IsZero():
+		return "insight has no refresh time"
+	case refresh.After(now):
+		return "insight refresh time is in the future"
+	case now.Sub(refresh) > ActiveWindow:
+		return "insight data too old"
+	}
+	return ""
 }
 
 // counted drops clients that never called (zero requests and no time).

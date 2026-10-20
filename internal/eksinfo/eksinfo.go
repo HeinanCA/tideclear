@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/smithy-go"
@@ -291,8 +290,7 @@ func IsAccessDenied(err error) bool {
 // (missing, expired, or rejected), so no per-check degrade can help: the
 // whole run must stop. A plain AccessDenied is a permission gap and is not one.
 func IsCredentialFailure(err error) bool {
-	var se *v4.SigningError // the SDK wraps every credential-provider failure (expired SSO token, no IMDS role) in one
-	if isCredentialError(err) || errors.As(err, &se) {
+	if isCredentialError(err) {
 		return true
 	}
 	var ae smithy.APIError
@@ -313,6 +311,10 @@ func IsCredentialFailure(err error) bool {
 // operation error from another service (STS AssumeRole, SSO) under the EKS
 // call's own, so an AccessDenied there is not an EKS-region problem.
 func isCredentialError(err error) bool {
+	var cre *CredentialRetrievalError // the provider itself failed (see WrapCredentials)
+	if errors.As(err, &cre) {
+		return true
+	}
 	for e := err; e != nil; e = errors.Unwrap(e) {
 		var oe *smithy.OperationError
 		if errors.As(e, &oe) && oe.ServiceID != "" && oe.ServiceID != eks.ServiceID {
