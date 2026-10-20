@@ -14,6 +14,9 @@ osImagePattern: '^Amazon Linux 2( |$)'
 # (failCgroupV1 = true). Target >= this makes an AL2 node a BLOCKER, below it a WARNING.
 cgroupV2Required: "1.35"
 
+# Last Kubernetes version for which EKS publishes Amazon Linux 2 AMIs.
+lastAL2AMIVersion: "1.32"
+
 # Fargate nodes are AWS-managed; they are never reported.
 fargateLabel:
   key: eks.amazonaws.com/compute-type

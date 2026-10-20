@@ -180,6 +180,18 @@ func TestScanNodeList403DegradesRestIntact(t *testing.T) {
 	}
 }
 
+func TestScanNodeList401IsFatalExitTwo(t *testing.T) {
+	d, c := nodeDeps(t, "33", &fakeAWS{})
+	c.dyn.PrependReactor("list", "nodes", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewUnauthorized("token expired")
+	})
+	code, out, se := run(t, d, "scan", "--cluster", nodeCluster)
+	if code != 2 || out != "" || !strings.Contains(se, "read nodes") {
+		t.Fatalf("exit=%d stdout=%q stderr=%q", code, out, se)
+	}
+	assertOneLine(t, se)
+}
+
 func TestScanNodegroupDenialDegradesAndNodesAreNotHidden(t *testing.T) {
 	denied := &smithy.OperationError{ServiceID: eks.ServiceID, OperationName: "ListNodegroups",
 		Err: &smithy.GenericAPIError{Code: "AccessDeniedException", Message: "nope\nsecond"}}

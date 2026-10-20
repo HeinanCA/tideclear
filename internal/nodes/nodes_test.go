@@ -31,9 +31,10 @@ func mustRules(t *testing.T) *rules.NodeRules {
 
 // fakeNG serves nodegroups one per page, in name order.
 type fakeNG struct {
-	groups  []types.Nodegroup
-	listErr error
-	pages   int
+	groups      []types.Nodegroup
+	listErr     error
+	describeErr map[string]error // by group name
+	pages       int
 }
 
 func (f *fakeNG) ListNodegroups(_ context.Context, in *eks.ListNodegroupsInput, _ ...func(*eks.Options)) (*eks.ListNodegroupsOutput, error) {
@@ -53,6 +54,9 @@ func (f *fakeNG) ListNodegroups(_ context.Context, in *eks.ListNodegroupsInput, 
 }
 
 func (f *fakeNG) DescribeNodegroup(_ context.Context, in *eks.DescribeNodegroupInput, _ ...func(*eks.Options)) (*eks.DescribeNodegroupOutput, error) {
+	if err := f.describeErr[aws.ToString(in.NodegroupName)]; err != nil {
+		return nil, err
+	}
 	for _, g := range f.groups {
 		if aws.ToString(g.NodegroupName) == aws.ToString(in.NodegroupName) {
 			return &eks.DescribeNodegroupOutput{Nodegroup: &g}, nil
@@ -93,20 +97,20 @@ func TestCleanNodegroupsProduceNoRows(t *testing.T) {
 		ng("al2023", types.AMITypesAl2023X8664Standard, "1.31", "1.31.4-20250101"),
 		ng("br", types.AMITypesBottlerocketX8664, "1.31", "1.31.4-v1.30.0"),
 	}}
-	rows, custom, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
-	if err != nil || len(rows) != 0 || len(custom) != 0 {
-		t.Fatalf("rows=%v custom=%v err=%v", rows, custom, err)
+	rows, groups, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
+	if err != nil || len(rows) != 0 || len(groups) != 2 {
+		t.Fatalf("rows=%v groups=%v err=%v", rows, groups, err)
 	}
 }
 
 func TestCustomNodegroupReleaseVersionIsNeverParsed(t *testing.T) {
 	api := &fakeNG{groups: []types.Nodegroup{ng("mine", types.AMITypesCustom, "1.31", "ami-0abc123def4567890")}}
-	rows, custom, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
+	rows, groups, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("rows=%+v err=%v, want none (no version warning for an AMI ID)", rows, err)
 	}
-	if !custom["mine"] || len(custom) != 1 {
-		t.Errorf("custom = %v, want {mine}", custom)
+	if groups["mine"] != "CUSTOM" || len(groups) != 1 {
+		t.Errorf("groups = %v, want {mine: CUSTOM}", groups)
 	}
 }
 
@@ -183,9 +187,9 @@ const (
 	kubelet  = "v1.31.4-eks-5e0fdde"
 )
 
-func checkNodes(t *testing.T, target int, skipManaged bool, custom map[string]bool, objs ...runtime.Object) []Row {
+func checkNodes(t *testing.T, target int, skipManaged bool, groups map[string]string, objs ...runtime.Object) []Row {
 	t.Helper()
-	rows, err := CheckNodes(context.Background(), dynWith(objs...), v(31), v(target), mustRules(t), skipManaged, custom)
+	rows, err := CheckNodes(context.Background(), dynWith(objs...), v(31), v(target), mustRules(t), skipManaged, groups)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,18 +221,71 @@ func TestCleanNodesProduceNoRows(t *testing.T) {
 
 func TestManagedNodesNotDuplicatedUnlessCustomOrNotChecked(t *testing.T) {
 	managed := node("m1", map[string]string{"eks.amazonaws.com/nodegroup": "grp"}, kubelet, al2OS)
-	if rows := checkNodes(t, 32, true, nil, managed); len(rows) != 0 {
+	judged := map[string]string{"grp": "AL2_x86_64"}
+	if rows := checkNodes(t, 32, true, judged, managed); len(rows) != 0 {
 		t.Errorf("managed node duplicated: %+v", rows)
 	}
-	if rows := checkNodes(t, 32, false, nil, managed); len(rows) != 1 {
+	if rows := checkNodes(t, 32, false, judged, managed); len(rows) != 1 {
 		t.Errorf("nodegroup check did not run: want the node reported, got %+v", rows)
 	}
-	if rows := checkNodes(t, 32, true, map[string]bool{"grp": true}, managed); len(rows) != 1 || rows[0].Name != "m1" {
+	custom := map[string]string{"grp": "CUSTOM"}
+	if rows := checkNodes(t, 32, true, custom, managed); len(rows) != 1 || rows[0].Name != "m1" {
 		t.Errorf("CUSTOM nodegroup node must keep its osImage check: %+v", rows)
 	}
 	clean := node("m2", map[string]string{"eks.amazonaws.com/nodegroup": "grp"}, kubelet, al2023OS)
-	if rows := checkNodes(t, 32, true, map[string]bool{"grp": true}, clean); len(rows) != 0 {
+	if rows := checkNodes(t, 32, true, custom, clean); len(rows) != 0 {
 		t.Errorf("clean CUSTOM node reported: %+v", rows)
+	}
+}
+
+// A nodegroup label is a claim by the node, not proof the nodegroup check judged that group.
+func TestNodeOfUnjudgedGroupIsNotSkipped(t *testing.T) {
+	n := node("m1", map[string]string{"eks.amazonaws.com/nodegroup": "ghost"}, kubelet, al2OS)
+	if rows := checkNodes(t, 32, true, map[string]string{"other": "AL2_x86_64"}, n); len(rows) != 1 || rows[0].Name != "m1" {
+		t.Fatalf("node labelled with a group the API did not return was skipped: %+v", rows)
+	}
+}
+
+func TestNodeOfUnreportedAMITypeGroupIsNotSkipped(t *testing.T) {
+	n := node("m1", map[string]string{"eks.amazonaws.com/nodegroup": "grp"}, kubelet, al2OS)
+	if rows := checkNodes(t, 32, true, map[string]string{"grp": ""}, n); len(rows) != 1 {
+		t.Fatalf("node of a group with no amiType was skipped: %+v", rows)
+	}
+}
+
+func TestEmptyAMITypeNodegroupIsWarning(t *testing.T) {
+	api := &fakeNG{groups: []types.Nodegroup{ng("blank", "", "1.31", "r")}}
+	rows, groups, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
+	if err != nil || len(rows) != 1 || rows[0].Severity != rules.SeverityWarning || !slices.Contains(rows[0].Reasons, "AMI type not reported") {
+		t.Fatalf("rows=%+v err=%v", rows, err)
+	}
+	if ami, ok := groups["blank"]; !ok || ami != "" {
+		t.Errorf("groups = %v, want blank judged with empty type", groups)
+	}
+}
+
+func TestNodegroupDeletedBetweenListAndDescribeIsSkipped(t *testing.T) {
+	api := &fakeNG{groups: []types.Nodegroup{ng("a", types.AMITypesAl2Arm64, "1.31", "r"), ng("gone", types.AMITypesAl2X8664, "1.31", "r")},
+		describeErr: map[string]error{"gone": &types.ResourceNotFoundException{Message: aws.String("deleted")}}}
+	rows, groups, err := CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t))
+	if err != nil || len(rows) != 1 || rows[0].Name != "a" {
+		t.Fatalf("rows=%+v err=%v", rows, err)
+	}
+	if _, ok := groups["gone"]; ok {
+		t.Errorf("deleted group reported as judged: %v", groups)
+	}
+	boom := errors.New("boom")
+	api.describeErr["gone"] = boom
+	if _, _, err = CheckNodegroups(context.Background(), api, "demo", v(31), v(32), mustRules(t)); !errors.Is(err, boom) {
+		t.Errorf("other describe errors must abort: %v", err)
+	}
+}
+
+func TestAL2ReasonExplainsTheBlocker(t *testing.T) {
+	rows := checkNodes(t, 35, true, nil, node("n1", nil, kubelet, al2OS))
+	want := "Amazon Linux 2 (osImage Amazon Linux 2) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane to 1.35"
+	if len(rows) != 1 || !slices.Contains(rows[0].Reasons, want) {
+		t.Fatalf("rows = %+v, want reason %q", rows, want)
 	}
 }
 
