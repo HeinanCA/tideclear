@@ -119,3 +119,31 @@ func TestRealKubeExplicitMissingKubeconfig(t *testing.T) {
 		t.Fatalf("err = %v, want one-line error", err)
 	}
 }
+
+func TestEKSAndClusterClientsShareOneConfigLoad(t *testing.T) {
+	loads := 0
+	cfg := cachedConfig(func(string, string) (aws.Config, error) {
+		loads++
+		return aws.Config{Region: "from-profile"}, nil
+	})
+	eksFn, clusterFn := clientFor(cfg, buildEKS), clientFor(cfg, buildCluster)
+	if _, err := eksFn("prof", "eu-x"); err != nil {
+		t.Fatal(err)
+	}
+	api, err := clusterFn("prof", "us-y")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := api.(*eks.Client).Options().Region; got != "us-y" {
+		t.Errorf("cluster client region = %q, want us-y", got)
+	}
+	if loads != 1 {
+		t.Errorf("config loaded %d times, want 1", loads)
+	}
+}
+
+func TestRealDepsWiresCluster(t *testing.T) {
+	if realDeps().Cluster == nil {
+		t.Fatal("realDeps().Cluster is nil")
+	}
+}

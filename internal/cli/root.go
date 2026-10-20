@@ -7,7 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/HeinanCA/tideclear/internal/addons"
 	"github.com/HeinanCA/tideclear/internal/eksinfo"
+	"github.com/HeinanCA/tideclear/internal/insights"
+	"github.com/HeinanCA/tideclear/internal/nodes"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -43,10 +46,21 @@ func exitCode(err error) int {
 	}
 }
 
+// ClusterAPI is the per-cluster EKS surface commands may call. It is
+// read-only by construction; later checks add their own read-only interfaces.
+type ClusterAPI interface {
+	insights.API
+	addons.API
+	nodes.NodegroupAPI
+}
+
 // Deps holds the external adapters commands use; tests substitute fakes.
 type Deps struct {
 	// EKS builds an EKS client for a profile and region ("" = default chain).
 	EKS func(profile, region string) (eksinfo.EKSAPI, error)
+	// Cluster builds a client for per-cluster reads (insights) for a profile
+	// and region; it shares the cached AWS config with EKS.
+	Cluster func(profile, region string) (ClusterAPI, error)
 	// DefaultRegion resolves the region the default chain would use.
 	DefaultRegion func(profile string) (string, error)
 	// Now is the clock; nil means time.Now.
@@ -73,6 +87,7 @@ func newRootCmd(deps Deps, stdout, stderr io.Writer) *cobra.Command {
 	root.SetErr(stderr)
 	root.AddCommand(newClustersCmd(deps))
 	root.AddCommand(newScanCmd(deps))
+	root.AddCommand(newInsightsCmd(deps))
 	return root
 }
 

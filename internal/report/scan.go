@@ -11,9 +11,17 @@ import (
 )
 
 // ScanText writes the cluster header, the findings table and coverage
-// footers (skipped groups/kinds, unverified objects). A removal planned after
-// the bundled Kubernetes release is marked "(projected)".
-func ScanText(w io.Writer, r apiscan.Result) error {
+// footers (skipped groups/kinds, unverified objects), then the extra checks'
+// sections. A removal planned after the bundled Kubernetes release is marked
+// "(projected)".
+func ScanText(w io.Writer, r apiscan.Result, ex Extras) error {
+	if err := scanTextBody(w, r); err != nil {
+		return err
+	}
+	return extrasText(w, ex)
+}
+
+func scanTextBody(w io.Writer, r apiscan.Result) error {
 	if r.Path != "" {
 		if _, err := fmt.Fprintf(w, "path: %s\nfiles scanned: %d\n", r.Path, r.FilesScanned); err != nil {
 			return err
@@ -141,11 +149,12 @@ type scanDoc struct {
 	Skipped       []skippedItemJSON `json:"skipped"`
 	Unverified    int               `json:"unverified"`
 	FilesScanned  *int              `json:"filesScanned,omitempty"`
+	extrasJSON
 }
 
 // ScanJSON writes the scan document (schemaVersion 1). findings and skipped
 // are always arrays; unverified is always present; cluster is present for live scans, path for manifest scans.
-func ScanJSON(w io.Writer, r apiscan.Result) error {
+func ScanJSON(w io.Writer, r apiscan.Result, ex Extras) error {
 	doc := scanDoc{SchemaVersion: schemaVersion, Target: r.Target.String(), Findings: []findingJSON{}, Skipped: []skippedItemJSON{},
 		Path: r.Path, EKSCluster: r.Cluster.EKSCluster, Unverified: r.Unverified}
 	if r.Path == "" {
@@ -165,6 +174,7 @@ func ScanJSON(w io.Writer, r apiscan.Result) error {
 	for _, s := range r.Skipped {
 		doc.Skipped = append(doc.Skipped, skippedItemJSON{Group: s.Group, Kind: s.Kind, Reason: s.Reason})
 	}
+	doc.extrasJSON = ex.json()
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(doc)

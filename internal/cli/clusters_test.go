@@ -73,6 +73,10 @@ func depsFor(m map[string]fakeEKS) Deps {
 	return Deps{
 		Now:           func() time.Time { return fixedNow },
 		DefaultRegion: func(string) (string, error) { return "r1", nil },
+		// An empty cluster client: no insights; tests that need data replace it.
+		Cluster: func(string, string) (ClusterAPI, error) {
+			return &fakeAWS{pages: map[string]*eks.ListInsightsOutput{"": {}}}, nil
+		},
 		EKS: func(_, region string) (eksinfo.EKSAPI, error) {
 			f, ok := m[region]
 			if !ok {

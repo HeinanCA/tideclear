@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "target": "1.35",
+  "cluster": {
+    "context": "demo-ctx",
+    "server": "api.example.test"
+  },
+  "eksCluster": "demo-cluster",
+  "findings": [
+    {
+      "kind": "DeviceClass",
+      "apiVersion": "resource.k8s.io/v1beta1",
+      "namespace": "",
+      "name": "tideclear-probe",
+      "replacement": "resource.k8s.io/v1",
+      "removedIn": "1.38",
+      "deprecatedIn": "1.35",
+      "severity": "WARNING",
+      "source": "k8s-lifecycle",
+      "projected": true,
+      "origin": "managedFields"
+    },
+    {
+      "kind": "FlowSchema",
+      "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
+      "namespace": "",
+      "name": "web",
+      "replacement": "flowcontrol.apiserver.k8s.io/v1",
+      "removedIn": "1.32",
+      "deprecatedIn": "1.29",
+      "severity": "BLOCKER",
+      "source": "k8s-lifecycle",
+      "projected": false,
+      "origin": "last-applied"
+    }
+  ],
+  "skipped": [
+    {
+      "group": "metrics.example.dev",
+      "kind": "",
+      "reason": "503 Service Unavailable"
+    },
+    {
+      "group": "batch",
+      "kind": "CronJob",
+      "reason": "forbidden"
+    }
+  ],
+  "unverified": 3,
+  "insights": [
+    {
+      "usage": "",
+      "apiVersion": "",
+      "kind": "",
+      "resource": "",
+      "awsStatus": "UNKNOWN",
+      "verdict": "UNKNOWN",
+      "clearsOn": null,
+      "reason": "insights unavailable: access denied",
+      "lastRefreshTime": null,
+      "objects": [],
+      "clients": []
+    }
+  ],
+  "checksSkipped": [
+    {
+      "check": "insights",
+      "reason": "access denied"
+    },
+    {
+      "check": "addons",
+      "reason": "access denied"
+    },
+    {
+      "check": "nodegroups",
+      "reason": "access denied"
+    },
+    {
+      "check": "nodes",
+      "reason": "access denied"
+    }
+  ]
+}

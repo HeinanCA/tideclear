@@ -49,7 +49,7 @@ func newCluster(major, minor string) cluster {
 		FakedServerVersion: &version.Info{Major: major, Minor: minor},
 	}
 	dyn := fakedyn.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
-		map[schema.GroupVersionResource]string{fsGVR: "FlowSchemaList", ingGVR: "IngressList"}, fs)
+		map[schema.GroupVersionResource]string{fsGVR: "FlowSchemaList", ingGVR: "IngressList", nodeGVR: "NodeList"}, fs)
 	return cluster{disc: disc, dyn: dyn}
 }
 
