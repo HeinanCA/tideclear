@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/HeinanCA/tideclear/internal/insights"
@@ -11,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
+	"github.com/aws/smithy-go"
 )
 
 var target = rules.Version{Major: 1, Minor: 32}
@@ -18,12 +20,14 @@ var target = rules.Version{Major: 1, Minor: 32}
 // fakeAPI serves installed add-ons (name -> current version) and, per
 // add-on, pages of DescribeAddonVersions keyed by nextToken ("" first).
 type fakeAPI struct {
-	listPages map[string]*eks.ListAddonsOutput
-	current   map[string]string
-	versions  map[string]map[string]*eks.DescribeAddonVersionsOutput
-	versionIn []*eks.DescribeAddonVersionsInput
-	listErr   error
-	descErr   error
+	listPages   map[string]*eks.ListAddonsOutput
+	current     map[string]string
+	versions    map[string]map[string]*eks.DescribeAddonVersionsOutput
+	versionIn   []*eks.DescribeAddonVersionsInput
+	listErr     error
+	descErr     error
+	descFail    map[string]error // per add-on DescribeAddon failure
+	versionsErr error
 }
 
 func (f *fakeAPI) ListAddons(_ context.Context, in *eks.ListAddonsInput, _ ...func(*eks.Options)) (*eks.ListAddonsOutput, error) {
@@ -38,11 +42,17 @@ func (f *fakeAPI) DescribeAddon(_ context.Context, in *eks.DescribeAddonInput, _
 		return nil, f.descErr
 	}
 	name := aws.ToString(in.AddonName)
+	if err := f.descFail[name]; err != nil {
+		return nil, err
+	}
 	return &eks.DescribeAddonOutput{Addon: &types.Addon{AddonName: &name, AddonVersion: aws.String(f.current[name])}}, nil
 }
 
 func (f *fakeAPI) DescribeAddonVersions(_ context.Context, in *eks.DescribeAddonVersionsInput, _ ...func(*eks.Options)) (*eks.DescribeAddonVersionsOutput, error) {
 	f.versionIn = append(f.versionIn, in)
+	if f.versionsErr != nil {
+		return nil, f.versionsErr
+	}
 	out := f.versions[aws.ToString(in.AddonName)][aws.ToString(in.NextToken)]
 	if out == nil {
 		return &eks.DescribeAddonVersionsOutput{}, nil
@@ -153,14 +163,128 @@ func TestCheckPaginates(t *testing.T) {
 	}
 }
 
-func TestCheckErrorsPropagate(t *testing.T) {
+func TestCheckListErrorPropagates(t *testing.T) {
 	boom := errors.New("boom")
-	for name, api := range map[string]*fakeAPI{
-		"list":     {listErr: boom},
-		"describe": {listPages: map[string]*eks.ListAddonsOutput{"": {Addons: []string{"x"}}}, descErr: boom},
+	if _, err := Check(context.Background(), &fakeAPI{listErr: boom}, "demo", target); !errors.Is(err, boom) {
+		t.Errorf("err = %v, want wrapped boom", err)
+	}
+}
+
+// verInfo is one catalog entry: an add-on version and the cluster versions it supports.
+func verInfo(v *string, clusters ...string) types.AddonVersionInfo {
+	vi := types.AddonVersionInfo{AddonVersion: v}
+	for _, c := range clusters {
+		vi.Compatibilities = append(vi.Compatibilities, types.Compatibility{ClusterVersion: aws.String(c)})
+	}
+	return vi
+}
+
+func catalogAPI(name, current string, versions ...types.AddonVersionInfo) *fakeAPI {
+	return &fakeAPI{
+		listPages: map[string]*eks.ListAddonsOutput{"": {Addons: []string{name}}},
+		current:   map[string]string{name: current},
+		versions: map[string]map[string]*eks.DescribeAddonVersionsOutput{
+			name: {"": {Addons: []types.AddonInfo{{AddonName: aws.String(name), AddonVersions: versions}}}},
+		},
+	}
+}
+
+func TestCheckSuggestsOnlyUpgrades(t *testing.T) {
+	cases := []struct {
+		name, current string
+		listed        []string
+		wantMin, why  string
+	}{
+		{"older listed version is never suggested", "v1.11.1-eksbuild.10",
+			[]string{"v1.11.1-eksbuild.9", "v1.11.3-eksbuild.1", "v1.11.4-eksbuild.1"}, "v1.11.3-eksbuild.1", ""},
+		{"lowest strictly newer wins", "v1.0.0-eksbuild.1", []string{"v1.10.0-eksbuild.2", "v1.2.0-eksbuild.1"}, "v1.2.0-eksbuild.1", ""},
+		{"nothing newer", "v1.12.0-eksbuild.1", []string{"v1.9.0-eksbuild.1", "v1.11.3-eksbuild.1"}, "",
+			"no compatible version newer than v1.12.0-eksbuild.1; newest for 1.32 is v1.11.3-eksbuild.1"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var vs []types.AddonVersionInfo
+			for _, v := range c.listed {
+				vs = append(vs, verInfo(aws.String(v), "1.32"))
+			}
+			rows, err := Check(context.Background(), catalogAPI("demo-dns", c.current, vs...), "demo", target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []Row{{Name: "demo-dns", Current: c.current, MinCompatible: c.wantMin, Status: StatusIncompatible,
+				Severity: rules.SeverityWarning, Reason: c.why}}
+			if !reflect.DeepEqual(rows, want) {
+				t.Fatalf("rows = %+v, want %+v", rows, want)
+			}
+		})
+	}
+}
+
+func TestCheckSkipsEmptyCatalogVersions(t *testing.T) {
+	api := catalogAPI("demo-dns", "v1.0.0-eksbuild.1", verInfo(nil, "1.32"), verInfo(aws.String(""), "1.32"))
+	rows, err := Check(context.Background(), api, "demo", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Status != StatusUnknown || rows[0].MinCompatible != "" {
+		t.Fatalf("rows = %+v, want one UNKNOWN row with no suggestion", rows)
+	}
+}
+
+func TestCheckDescribeFailureIsPerAddonUnknown(t *testing.T) {
+	api := &fakeAPI{
+		listPages: map[string]*eks.ListAddonsOutput{"": {Addons: []string{"a-one", "b-two"}}},
+		current:   map[string]string{"a-one": "v1.0.0-eksbuild.1", "b-two": "v1.1.0-eksbuild.1"},
+		descFail:  map[string]error{"a-one": errors.New("denied\nsecond line")},
+		versions: map[string]map[string]*eks.DescribeAddonVersionsOutput{
+			"b-two": {"": {Addons: []types.AddonInfo{info("b-two", map[string][]string{"v1.1.0-eksbuild.1": {"1.32"}})}}}},
+	}
+	rows, err := Check(context.Background(), api, "demo", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].Name != "a-one" || rows[0].Status != StatusUnknown || rows[1].Status != StatusOK {
+		t.Fatalf("rows = %+v", rows)
+	}
+	if want := "describe add-on a-one: denied; second line"; rows[0].Reason != want {
+		t.Errorf("reason = %q, want %q", rows[0].Reason, want)
+	}
+}
+
+func TestCheckVersionsFailureIsPerAddonUnknown(t *testing.T) {
+	api := oneAddon("demo-dns", "v1.0.0-eksbuild.1", nil)
+	api.versionsErr = errors.New("throttled")
+	rows, err := Check(context.Background(), api, "demo", target)
+	if err != nil || len(rows) != 1 || rows[0].Status != StatusUnknown || !strings.Contains(rows[0].Reason, "throttled") {
+		t.Fatalf("rows = %+v err = %v", rows, err)
+	}
+}
+
+func TestCheckCredentialAndContextErrorsStayFatal(t *testing.T) {
+	cred := &smithy.GenericAPIError{Code: "ExpiredTokenException", Message: "expired"}
+	for name, f := range map[string]func() (*fakeAPI, context.Context){
+		"credential on describe": func() (*fakeAPI, context.Context) {
+			a := oneAddon("x", "v1", nil)
+			a.descErr = cred
+			return a, context.Background()
+		},
+		"credential on versions": func() (*fakeAPI, context.Context) {
+			a := oneAddon("x", "v1", nil)
+			a.versionsErr = cred
+			return a, context.Background()
+		},
+		"cancelled context": func() (*fakeAPI, context.Context) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			a := oneAddon("x", "v1", nil)
+			a.descErr = context.Canceled
+			return a, ctx
+		},
 	} {
-		if _, err := Check(context.Background(), api, "demo", target); !errors.Is(err, boom) {
-			t.Errorf("%s: err = %v, want wrapped boom", name, err)
+		api, ctx := f()
+		rows, err := Check(ctx, api, "demo", target)
+		if err == nil || rows != nil {
+			t.Errorf("%s: rows=%+v err=%v, want a fatal error and no rows", name, rows, err)
 		}
 	}
 }

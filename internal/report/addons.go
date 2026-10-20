@@ -9,10 +9,15 @@ import (
 	"github.com/HeinanCA/tideclear/internal/addons"
 )
 
-// addonsSection prints the add-on table; nothing when there are no add-ons.
-func addonsSection(w io.Writer, rows []addons.Row) error {
+// addonsSection prints the add-on table. With no rows it is silent unless
+// the check ran, when it says there was nothing to check.
+func addonsSection(w io.Writer, ran bool, rows []addons.Row) error {
 	if len(rows) == 0 {
-		return nil
+		if !ran {
+			return nil
+		}
+		_, err := fmt.Fprintln(w, "add-ons: none managed by EKS (self-managed add-ons are not checked)")
+		return err
 	}
 	if _, err := fmt.Fprintln(w, "add-ons:"); err != nil {
 		return err

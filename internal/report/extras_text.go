@@ -18,7 +18,7 @@ func extrasText(w io.Writer, ex Extras) error {
 			return err
 		}
 	}
-	if err := addonsSection(w, ex.Addons); err != nil {
+	if err := addonsSection(w, ex.AddonsRan, ex.Addons); err != nil {
 		return err
 	}
 	if n := ex.unknowns(); n > 0 {

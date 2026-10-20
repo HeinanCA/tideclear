@@ -15,6 +15,7 @@ type CheckSkipped struct{ Check, Reason string }
 type Extras struct {
 	Insights    []reconcile.Row
 	Addons      []addons.Row
+	AddonsRan   bool // the add-on check ran, so the section shows even when empty
 	InsightsRan bool // --insights was given, so the section shows even when empty
 	Skipped     []CheckSkipped
 }
@@ -36,10 +37,10 @@ func (e Extras) unknowns() int {
 }
 
 // extrasJSON is embedded in scanDoc. A pointer to a slice keeps an empty
-// insights array visible (present whenever --insights ran) while a nil one is omitted.
+// insights or add-ons array visible (present whenever that check ran) while a nil one is omitted.
 type extrasJSON struct {
 	Insights      *[]insightRowJSON  `json:"insights,omitempty"`
-	Addons        []addonRowJSON     `json:"addons,omitempty"`
+	Addons        *[]addonRowJSON    `json:"addons,omitempty"`
 	ChecksSkipped []checkSkippedJSON `json:"checksSkipped,omitempty"`
 }
 
@@ -85,8 +86,12 @@ func (e Extras) json() extrasJSON {
 		}
 		out.Insights = &rows
 	}
-	for _, r := range e.Addons {
-		out.Addons = append(out.Addons, addonJSON(r))
+	if e.AddonsRan || len(e.Addons) > 0 {
+		rows := make([]addonRowJSON, 0, len(e.Addons))
+		for _, r := range e.Addons {
+			rows = append(rows, addonJSON(r))
+		}
+		out.Addons = &rows
 	}
 	for _, s := range e.Skipped {
 		out.ChecksSkipped = append(out.ChecksSkipped, checkSkippedJSON(s))
