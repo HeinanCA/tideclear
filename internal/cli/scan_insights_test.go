@@ -30,6 +30,8 @@ const usageFlowSchema = "/apis/flowcontrol.apiserver.k8s.io/v1beta3/flowschemas"
 
 // deprecationAWS serves one deprecated-API insight with the given clients.
 type deprecationAWS struct {
+	addonFake
+	addonCompat []types.AddonCompatibilityDetail // the insight's add-on compatibility details
 	status      types.InsightStatusValue
 	clients     []types.ClientStat
 	listErr     error
@@ -67,7 +69,8 @@ func (f *deprecationAWS) DescribeInsight(context.Context, *eks.DescribeInsightIn
 		return &eks.DescribeInsightOutput{Insight: &types.Insight{}}, nil
 	}
 	return &eks.DescribeInsightOutput{Insight: &types.Insight{CategorySpecificSummary: &types.InsightCategorySpecificSummary{
-		DeprecationDetails: []types.DeprecationDetail{{Usage: aws.String(usageFlowSchema), ClientStats: f.clients}},
+		DeprecationDetails:        []types.DeprecationDetail{{Usage: aws.String(usageFlowSchema), ClientStats: f.clients}},
+		AddonCompatibilityDetails: f.addonCompat,
 	}}}, nil
 }
 
@@ -254,13 +257,12 @@ func TestScanStrictAloneCountsNothingExtra(t *testing.T) {
 }
 
 func TestScanWithoutInsightsNeverCallsEKSInsights(t *testing.T) {
-	d := kubeDeps(t, cleanCluster())
-	d.Cluster = func(string, string) (ClusterAPI, error) {
-		t.Fatal("Cluster must not be built without --insights")
-		return nil, nil
-	}
-	if code, _, se := run(t, d, "scan", "--cluster", "demo-cluster"); code != 0 {
+	api := &fakeAWS{pages: map[string]*eks.ListInsightsOutput{"": {}}}
+	if code, _, se := run(t, insightDeps(t, cleanCluster(), api), "scan", "--cluster", "demo-cluster"); code != 0 {
 		t.Fatalf("exit=%d stderr=%q", code, se)
+	}
+	if len(api.listIn) != 0 {
+		t.Fatalf("ListInsights called %d times without --insights", len(api.listIn))
 	}
 }
 
