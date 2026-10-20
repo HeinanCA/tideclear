@@ -32,19 +32,6 @@
       "source": "k8s-lifecycle",
       "projected": false,
       "origin": "last-applied"
-    },
-    {
-      "kind": "Ingress",
-      "apiVersion": "extensions/v1beta1",
-      "namespace": "demo",
-      "name": "web",
-      "replacement": "networking.k8s.io/v1",
-      "removedIn": "1.22",
-      "deprecatedIn": "1.14",
-      "severity": "BLOCKER",
-      "source": "k8s-lifecycle",
-      "projected": false,
-      "origin": "managedFields"
     }
   ],
   "skipped": [
@@ -62,30 +49,9 @@
   "unverified": 3,
   "insights": [
     {
-      "usage": "/apis/flowcontrol.apiserver.k8s.io/v1beta3/flowschemas",
-      "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
-      "kind": "FlowSchema",
-      "resource": "flowschemas",
-      "awsStatus": "ERROR",
-      "verdict": "BLOCKER",
-      "clearsOn": null,
-      "reason": "live objects use this API version",
-      "lastRefreshTime": "2026-10-19T09:00:00Z",
-      "objects": [
-        {
-          "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
-          "kind": "FlowSchema",
-          "namespace": "",
-          "name": "web",
-          "origin": "last-applied"
-        }
-      ],
-      "clients": []
-    },
-    {
       "usage": "/apis/apidiscovery.k8s.io/v2beta1/apigroupdiscoveries",
       "apiVersion": "apidiscovery.k8s.io/v2beta1",
-      "kind": "APIGroupDiscovery",
+      "kind": "",
       "resource": "apigroupdiscoveries",
       "awsStatus": "ERROR",
       "verdict": "BLOCKER",
@@ -100,57 +66,6 @@
           "lastRequestTime": "2026-10-19T09:30:00Z"
         }
       ]
-    },
-    {
-      "usage": "/apis/flowcontrol.apiserver.k8s.io/v1beta3/prioritylevelconfigurations",
-      "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
-      "kind": "PriorityLevelConfiguration",
-      "resource": "prioritylevelconfigurations",
-      "awsStatus": "WARNING",
-      "verdict": "STALE",
-      "clearsOn": "2026-11-09T08:00:00Z",
-      "reason": "last call is older than 7 days before the insight refreshed",
-      "lastRefreshTime": "2026-10-19T09:00:00Z",
-      "objects": [],
-      "clients": [
-        {
-          "userAgent": "kubectl/1.28",
-          "requests": 3,
-          "lastRequestTime": "2026-10-10T08:00:00Z"
-        }
-      ]
-    },
-    {
-      "usage": "/apis/batch/v1beta1/cronjobs",
-      "apiVersion": "batch/v1beta1",
-      "kind": "",
-      "resource": "cronjobs",
-      "awsStatus": "ERROR",
-      "verdict": "UNKNOWN",
-      "clearsOn": null,
-      "reason": "not scanned live: the live scan did not read this resource",
-      "lastRefreshTime": "2026-10-19T09:00:00Z",
-      "objects": [],
-      "clients": [
-        {
-          "userAgent": "old-agent",
-          "requests": 1,
-          "lastRequestTime": "2026-10-10T08:00:00Z"
-        }
-      ]
-    },
-    {
-      "usage": "/apis/policy/v1beta1/poddisruptionbudgets",
-      "apiVersion": "policy/v1beta1",
-      "kind": "PodDisruptionBudget",
-      "resource": "poddisruptionbudgets",
-      "awsStatus": "PASSING",
-      "verdict": "OK",
-      "clearsOn": null,
-      "reason": "",
-      "lastRefreshTime": "2026-10-19T09:00:00Z",
-      "objects": [],
-      "clients": []
     }
   ],
   "addons": [
