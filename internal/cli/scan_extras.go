@@ -86,9 +86,7 @@ func addonsExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, fl scan
 	case eksinfo.IsCredentialFailure(err), ctx.Err() != nil:
 		return ex, fmt.Errorf("read add-ons for %s: %w", fl.cluster, err)
 	default:
-		reason := oneLine(err.Error())
-		ex.Skipped = append(ex.Skipped, report.CheckSkipped{Check: "addons", Reason: reason})
-		_, _ = fmt.Fprintf(stderr, "tideclear: warning: addons check skipped: %s\n", reason)
+		ex = skipCheck(stderr, ex, "addons", err)
 	}
 	return ex, nil
 }
@@ -113,10 +111,8 @@ func insightsExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, deps 
 	case eksinfo.IsCredentialFailure(err), ctx.Err() != nil:
 		return ex, nil, fmt.Errorf("read insights for %s: %w", fl.cluster, err)
 	default:
-		reason := oneLine(err.Error())
-		ex.Insights = []reconcile.Row{reconcile.Unavailable(reason)}
-		ex.Skipped = []report.CheckSkipped{{Check: "insights", Reason: reason}}
-		_, _ = fmt.Fprintf(stderr, "tideclear: warning: insights check skipped: %s\n", reason)
+		ex = skipCheck(stderr, ex, "insights", err)
+		ex.Insights = []reconcile.Row{reconcile.Unavailable(oneLine(err.Error()))}
 	}
 	var compat []insights.AddonCompat
 	for _, in := range ins {

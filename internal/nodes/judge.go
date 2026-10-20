@@ -22,12 +22,11 @@ func (j *judgement) add(sev rules.Severity, reason string) {
 }
 
 // al2 flags Amazon Linux 2 (cgroup v1): BLOCKER from the cgroup v2 cutoff, WARNING below.
+// The reason is one clause: the report joins reasons with "; ".
 func (j *judgement) al2(nr *rules.NodeRules, target rules.Version, what string) {
 	sev := nr.AL2Severity(target)
-	msg := fmt.Sprintf("Amazon Linux 2 (%s): EKS no longer publishes AL2 AMIs; kubelet %s+ needs cgroup v2", what, nr.CgroupV2Required)
-	if sev == rules.SeverityBlocker {
-		msg += fmt.Sprintf(" (target %s)", target)
-	}
+	msg := fmt.Sprintf("Amazon Linux 2 (%s) is cgroup v1: kubelet %s+ will not start on it and EKS AL2 AMIs stop at %s, so these nodes cannot follow the control plane to %s",
+		what, nr.CgroupV2Required, nr.LastAL2AMIVersion, target)
 	j.add(sev, msg)
 }
 

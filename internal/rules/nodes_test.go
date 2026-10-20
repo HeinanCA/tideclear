@@ -35,6 +35,9 @@ func TestLoadNodesData(t *testing.T) {
 	if len(nr.AMIFamilyPrefixes) != 1 || nr.AMIFamilyPrefixes[0] != "AL2_" {
 		t.Errorf("AMIFamilyPrefixes = %v, want [AL2_]", nr.AMIFamilyPrefixes)
 	}
+	if nr.LastAL2AMIVersion != (Version{1, 32}) {
+		t.Errorf("LastAL2AMIVersion = %v, want 1.32", nr.LastAL2AMIVersion)
+	}
 	if nr.CgroupV2Required != (Version{1, 35}) || nr.MaxMinorsOlder != 3 {
 		t.Errorf("cgroup=%v skew=%d", nr.CgroupV2Required, nr.MaxMinorsOlder)
 	}
@@ -103,6 +106,12 @@ func TestNodesStrictDecode(t *testing.T) {
 	bad := strings.Replace(good, "^Amazon Linux 2( |$)", "([", 1)
 	if _, err := parseNodes([]byte(bad)); err == nil {
 		t.Error("bad regex accepted")
+	}
+	if _, err := parseNodes([]byte(strings.Replace(good, "  value: fargate\n", "  value: \"\"\n", 1))); err == nil {
+		t.Error("empty fargateLabel.value accepted")
+	}
+	if _, err := parseNodes([]byte(strings.Replace(good, "lastAL2AMIVersion: \"1.32\"\n", "", 1))); err == nil {
+		t.Error("missing lastAL2AMIVersion accepted")
 	}
 	if _, err := parseNodes([]byte("amiFamilyPrefixes: []\n")); err == nil {
 		t.Error("incomplete data accepted")

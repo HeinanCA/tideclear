@@ -8,6 +8,6 @@ warning: 2 groups/kinds skipped (see stderr); results are partial
 3 objects had no apiVersion evidence and were not checked
 nodes:
 SOURCE     NAME         VERSION              AMI         RELEASE          OS IMAGE                SEVERITY  REASONS
-nodegroup  workers-al2  1.31                 AL2_x86_64  1.31.4-20250101  -                       BLOCKER   Amazon Linux 2 (amiType AL2_x86_64): kubelet 1.35+ needs cgroup v2 (target 1.35)
+nodegroup  workers-al2  1.31                 AL2_x86_64  1.31.4-20250101  -                       BLOCKER   Amazon Linux 2 (amiType AL2_x86_64) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane to 1.35
 node       ip-10-0-0-7  v1.27.9-eks-5e0fdde  -           -                Amazon Linux 2          WARNING   kubelet 1.27 is 4 minors behind the control plane 1.31 (max 3); version note
 node       ip-10-0-0-9  weird                -           -                Bottlerocket OS 1.30.0  WARNING   version unknown

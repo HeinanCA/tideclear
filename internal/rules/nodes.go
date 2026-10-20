@@ -23,6 +23,7 @@ type NodeRules struct {
 	AMIFamilyPrefixes     []string
 	OSImage               *regexp.Regexp
 	CgroupV2Required      Version
+	LastAL2AMIVersion     Version
 	FargateLabelKey       string
 	FargateLabelValue     string
 	ManagedNodegroupLabel string
@@ -34,6 +35,7 @@ type rawNodeRules struct {
 	AMIFamilyPrefixes []string `json:"amiFamilyPrefixes"`
 	OSImagePattern    string   `json:"osImagePattern"`
 	CgroupV2Required  string   `json:"cgroupV2Required"`
+	LastAL2AMIVersion string   `json:"lastAL2AMIVersion"`
 	FargateLabel      struct {
 		Key   string `json:"key"`
 		Value string `json:"value"`
@@ -70,7 +72,7 @@ func parseNodes(b []byte) (*NodeRules, error) {
 	if err := dec.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	if len(raw.AMIFamilyPrefixes) == 0 || raw.OSImagePattern == "" || raw.FargateLabel.Key == "" ||
+	if len(raw.AMIFamilyPrefixes) == 0 || raw.OSImagePattern == "" || raw.FargateLabel.Key == "" || raw.FargateLabel.Value == "" ||
 		raw.ManagedNodegroupLabelKey == "" || raw.Skew.MaxMinorsOlder <= 0 || len(raw.Sources) == 0 {
 		return nil, errors.New("amiFamilyPrefixes, osImagePattern, fargateLabel, managedNodegroupLabelKey, skew and sources are all required")
 	}
@@ -82,8 +84,12 @@ func parseNodes(b []byte) (*NodeRules, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cgroupV2Required: %w", err)
 	}
+	last, err := ParseVersion(raw.LastAL2AMIVersion)
+	if err != nil {
+		return nil, fmt.Errorf("lastAL2AMIVersion: %w", err)
+	}
 	nr := &NodeRules{
-		AMIFamilyPrefixes: raw.AMIFamilyPrefixes, OSImage: re, CgroupV2Required: cg,
+		AMIFamilyPrefixes: raw.AMIFamilyPrefixes, OSImage: re, CgroupV2Required: cg, LastAL2AMIVersion: last,
 		FargateLabelKey: raw.FargateLabel.Key, FargateLabelValue: raw.FargateLabel.Value,
 		ManagedNodegroupLabel: raw.ManagedNodegroupLabelKey, MaxMinorsOlder: raw.Skew.MaxMinorsOlder,
 	}
