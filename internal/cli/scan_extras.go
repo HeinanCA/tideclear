@@ -102,6 +102,7 @@ func insightsExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, deps 
 		if deps.Now != nil {
 			now = deps.Now
 		}
+		ex.RefreshStale = report.RefreshStale(ins, now())
 		ex.Insights = reconcile.Reconcile(ins, res, now())
 		if !slices.ContainsFunc(ins, func(in insights.Insight) bool {
 			return in.Target == target.String() && reconcile.IsDeprecatedInsight(in)

@@ -15,12 +15,13 @@ type CheckSkipped struct{ Check, Reason string }
 // Extras is what the optional checks add to a scan report. The zero value
 // adds nothing, so a plain scan prints exactly what it always did.
 type Extras struct {
-	Insights    []reconcile.Row
-	Addons      []addons.Row
-	Nodes       []nodes.Row // findings only; the section is omitted when empty
-	AddonsRan   bool        // the add-on check ran, so the section shows even when empty
-	InsightsRan bool        // --insights was given, so the section shows even when empty
-	Skipped     []CheckSkipped
+	Insights     []reconcile.Row
+	Addons       []addons.Row
+	Nodes        []nodes.Row // findings only; the section is omitted when empty
+	AddonsRan    bool        // the add-on check ran, so the section shows even when empty
+	InsightsRan  bool        // --insights was given, so the section shows even when empty
+	Skipped      []CheckSkipped
+	RefreshStale bool // an insight was refreshed over 24h ago: the text section adds the console hint
 }
 
 // verdicts counts the reconcile rows with verdict v.
