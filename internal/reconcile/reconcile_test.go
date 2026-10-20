@@ -335,10 +335,28 @@ func TestH2OtherInsightsAndPassingProduceNoRow(t *testing.T) {
 	for _, in := range []insights.Insight{
 		{ID: "k", Name: "Kubelet version skew", Status: insights.StatusError, DetailsUnavailable: true},
 		{ID: "a", Name: "Add-on compatibility", Status: insights.StatusWarning},
-		{ID: "p", Name: deprecatedInsightName, Status: insights.StatusPassing, DetailsUnavailable: true},
+		{ID: "p", Name: deprecatedInsightName, Status: insights.StatusPassing, DetailsUnavailable: true, LastRefresh: now.Add(-time.Hour)},
 	} {
 		if rows := Reconcile([]insights.Insight{in}, scanned(), now); len(rows) != 0 {
 			t.Fatalf("%s: rows = %+v, want none", in.Name, rows)
+		}
+	}
+}
+
+func TestPassingDetaillessInsightIsGatedOnFreshness(t *testing.T) {
+	cases := map[string]struct {
+		refresh time.Time
+		reason  string
+	}{
+		"zero":    {time.Time{}, "no refresh time"},
+		"future":  {now.Add(time.Hour), "in the future"},
+		"too old": {now.Add(-ActiveWindow - time.Hour), "too old"},
+	}
+	for name, c := range cases {
+		in := insights.Insight{ID: "d", Name: deprecatedInsightName, Status: insights.StatusPassing, LastRefresh: c.refresh}
+		rows := Reconcile([]insights.Insight{in}, scanned(), now)
+		if len(rows) != 1 || rows[0].Verdict != VerdictUnknown || !strings.Contains(rows[0].Reason, c.reason) {
+			t.Errorf("%s: rows = %+v", name, rows)
 		}
 	}
 }

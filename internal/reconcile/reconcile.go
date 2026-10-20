@@ -82,28 +82,36 @@ func MissingInsight(target string) Row {
 // Reconcile returns one Row per deprecation detail of every insight. The
 // verdict follows the first matching rule: live objects, unusable insight,
 // PASSING, an active client, a stale client the scan could have seen, else UNKNOWN.
-// A non-PASSING deprecated-API insight with no details gets one UNKNOWN row, so
-// it is never reported as clean. Other insights produce no rows.
+// A deprecated-API insight with no details gets one UNKNOWN row, so it is never
+// reported as clean, unless it is PASSING with a trusted refresh time. Other insights produce no rows.
 func Reconcile(ins []insights.Insight, res apiscan.Result, now time.Time) []Row {
 	var rows []Row
 	for _, in := range ins {
 		for _, d := range in.Deprecations {
 			rows = append(rows, one(in, d, res, now))
 		}
-		if len(in.Deprecations) == 0 && in.Status != insights.StatusPassing && IsDeprecatedInsight(in) {
-			rows = append(rows, detailless(in))
+		if len(in.Deprecations) == 0 && IsDeprecatedInsight(in) {
+			if row, ok := detailless(in, now); ok {
+				rows = append(rows, row)
+			}
 		}
 	}
 	return rows
 }
 
-func detailless(in insights.Insight) Row {
+// detailless is the row for a deprecated-API insight with no details: none for
+// a PASSING one with a trusted refresh time (accepted as clean), else UNKNOWN.
+func detailless(in insights.Insight, now time.Time) (Row, bool) {
+	if in.Status == insights.StatusPassing {
+		why := untrusted(in.LastRefresh, now)
+		return Row{AWSStatus: string(in.Status), Verdict: VerdictUnknown, LastRefresh: in.LastRefresh, Reason: why}, why != ""
+	}
 	why := "no API details"
 	if in.DetailsUnavailable {
 		why = "details unavailable (no API details returned)"
 	}
 	return Row{AWSStatus: string(in.Status), Verdict: VerdictUnknown, LastRefresh: in.LastRefresh,
-		Reason: fmt.Sprintf("AWS reported %s with %s", in.Status, why)}
+		Reason: fmt.Sprintf("AWS reported %s with %s", in.Status, why)}, true
 }
 
 func one(in insights.Insight, d insights.Deprecation, res apiscan.Result, now time.Time) Row {

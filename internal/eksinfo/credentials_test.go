@@ -81,3 +81,14 @@ func TestListCredentialRetrievalFailureIsNeverSkipped(t *testing.T) {
 		}
 	}
 }
+
+func TestListCredentialTimeoutIsNeverSkipped(t *testing.T) {
+	bad := region(nil)
+	bad.err = &smithy.OperationError{ServiceID: eks.ServiceID, OperationName: "ListClusters",
+		Err: &CredentialRetrievalError{Err: context.DeadlineExceeded}}
+	good := region(map[string]string{"x": "1.35"}, "x")
+	_, sk, err := lister(map[string]*fakeAPI{"b": bad, "g": good}).List(context.Background(), []string{"b", "g"}, "")
+	if err == nil || len(sk) != 0 || !IsCredentialFailure(err) {
+		t.Fatalf("sk=%v err=%v, want fatal credential failure", sk, err)
+	}
+}
