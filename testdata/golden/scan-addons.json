@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "target": "1.35",
+  "cluster": {
+    "context": "demo-ctx",
+    "server": "api.example.test"
+  },
+  "eksCluster": "demo-cluster",
+  "findings": [
+    {
+      "kind": "DeviceClass",
+      "apiVersion": "resource.k8s.io/v1beta1",
+      "namespace": "",
+      "name": "tideclear-probe",
+      "replacement": "resource.k8s.io/v1",
+      "removedIn": "1.38",
+      "deprecatedIn": "1.35",
+      "severity": "WARNING",
+      "source": "k8s-lifecycle",
+      "projected": true,
+      "origin": "managedFields"
+    },
+    {
+      "kind": "FlowSchema",
+      "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
+      "namespace": "",
+      "name": "web",
+      "replacement": "flowcontrol.apiserver.k8s.io/v1",
+      "removedIn": "1.32",
+      "deprecatedIn": "1.29",
+      "severity": "BLOCKER",
+      "source": "k8s-lifecycle",
+      "projected": false,
+      "origin": "last-applied"
+    }
+  ],
+  "skipped": [
+    {
+      "group": "metrics.example.dev",
+      "kind": "",
+      "reason": "503 Service Unavailable"
+    },
+    {
+      "group": "batch",
+      "kind": "CronJob",
+      "reason": "forbidden"
+    }
+  ],
+  "unverified": 3,
+  "addons": [
+    {
+      "name": "demo-dns",
+      "current": "v1.1.0-eksbuild.1",
+      "minCompatible": "",
+      "status": "OK",
+      "severity": "",
+      "reason": "",
+      "insightNote": ""
+    },
+    {
+      "name": "demo-net",
+      "current": "v1.0.0-eksbuild.1",
+      "minCompatible": "v1.2.0-eksbuild.1",
+      "status": "INCOMPATIBLE",
+      "severity": "WARNING",
+      "reason": "",
+      "insightNote": "insight lists this version as compatible; direct check says not"
+    },
+    {
+      "name": "demo-agent",
+      "current": "v3.0.0",
+      "minCompatible": "",
+      "status": "UNKNOWN",
+      "severity": "",
+      "reason": "no version of this add-on lists Kubernetes 1.35 as compatible",
+      "insightNote": ""
+    }
+  ],
+  "checksSkipped": [
+    {
+      "check": "nodes",
+      "reason": "access denied"
+    }
+  ]
+}

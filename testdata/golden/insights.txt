@@ -1,0 +1,4 @@
+NAME                                         TARGET  STATUS   REFRESHED
+Deprecated APIs removed in Kubernetes v1.32  1.32    ERROR    14h ago
+EKS add-on version compatibility             1.32    PASSING  14h ago
+Kubelet version skew                         1.32    UNKNOWN  -

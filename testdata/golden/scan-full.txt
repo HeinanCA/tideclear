@@ -1,0 +1,24 @@
+cluster: demo-ctx (api.example.test) [EKS: demo-cluster]
+KIND         APIVERSION                            NAMESPACE  NAME             REPLACEMENT                      REMOVED IN        SEVERITY
+DeviceClass  resource.k8s.io/v1beta1               -          tideclear-probe  resource.k8s.io/v1               1.38 (projected)  WARNING
+FlowSchema   flowcontrol.apiserver.k8s.io/v1beta3  -          web              flowcontrol.apiserver.k8s.io/v1  1.32              BLOCKER
+warning: 2 groups/kinds skipped (see stderr); results are partial
+3 objects had no apiVersion evidence and were not checked
+
+upgrade insights:
+APIVERSION                   KIND  AWS STATUS  VERDICT  EVIDENCE
+apidiscovery.k8s.io/v2beta1  -     ERROR       BLOCKER  client demo-controller/1.2 x42, last 2026-10-19
+
+add-ons:
+NAME        CURRENT            MIN COMPATIBLE     STATUS                  NOTE
+demo-dns    v1.1.0-eksbuild.1  -                  OK                      -
+demo-net    v1.0.0-eksbuild.1  v1.2.0-eksbuild.1  INCOMPATIBLE (WARNING)  insight lists this version as compatible; direct check says not
+demo-agent  v3.0.0             -                  UNKNOWN                 no version of this add-on lists Kubernetes 1.35 as compatible
+
+nodes:
+SOURCE     NAME         VERSION               AMI         RELEASE          OS IMAGE                SEVERITY  REASONS
+nodegroup  workers-al2  1.32                  AL2_x86_64  1.32.9-20251001  -                       BLOCKER   Amazon Linux 2 (amiType AL2_x86_64) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane past 1.32
+node       ip-10-0-0-7  v1.32.9-eks-5e0fdde   -           -                Amazon Linux 2          BLOCKER   Amazon Linux 2 (osImage Amazon Linux 2) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane past 1.32
+node       ip-10-0-0-8  v1.30.14-eks-5e0fdde  -           -                Bottlerocket OS 1.30.0  WARNING   kubelet 1.30 is 4 minors behind the control plane 1.34 (max 3)
+node       ip-10-0-0-9  weird                 -           -                Bottlerocket OS 1.30.0  WARNING   version unknown
+result not clean: 1 unknown

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "insights": [
+    {
+      "id": "i1",
+      "name": "Deprecated APIs removed in Kubernetes v1.32",
+      "target": "1.32",
+      "status": "ERROR",
+      "reason": "deprecated APIs in use",
+      "lastRefreshTime": "2026-10-19T08:00:00Z"
+    },
+    {
+      "id": "i2",
+      "name": "EKS add-on version compatibility",
+      "target": "1.32",
+      "status": "PASSING",
+      "reason": "",
+      "lastRefreshTime": "2026-10-19T08:00:00Z"
+    },
+    {
+      "id": "i3",
+      "name": "Kubelet version skew",
+      "target": "1.32",
+      "status": "UNKNOWN",
+      "reason": "",
+      "lastRefreshTime": null
+    }
+  ]
+}

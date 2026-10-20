@@ -14,6 +14,7 @@ import (
 	"github.com/HeinanCA/tideclear/internal/report"
 	"github.com/HeinanCA/tideclear/internal/rules"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/dynamic"
 )
 
 // scanTimeout bounds a whole scan (a var so tests can shorten it).
@@ -22,6 +23,7 @@ var scanTimeout = 10 * time.Minute
 type scanFlags struct {
 	kubeconfig, kubeContext, target, cluster, profile, region, output, path string
 	pathSet                                                                 bool // --path given (even if empty)
+	insights, strict                                                        bool
 }
 
 func newScanCmd(deps Deps) *cobra.Command {
@@ -39,7 +41,13 @@ func newScanCmd(deps Deps) *cobra.Command {
 			"current version comes from EKS (honoring --profile and --region); otherwise\n" +
 			"from the API server. --cluster and --context are independent: they must name\n" +
 			"the same cluster.\n\n" +
-			"Exit codes: 0 clean (warnings allowed), 1 blockers, 2 tool or connection error.\n" +
+			"With --insights (and --cluster) the EKS Upgrade Insights are reconciled with the\n" +
+			"live scan: BLOCKER (live objects, or a client called the API within 7 days of the insight's last refresh),\n" +
+			"STALE (last call older than 7 days; the insight clears 30 days after it), OK or\n" +
+			"UNKNOWN. If insights cannot be read the rest of the report still prints, with an\n" +
+			"UNKNOWN row; expired or invalid credentials exit 2.\n\n" +
+			"Exit codes: 0 clean (warnings allowed), 1 blockers (--strict: also STALE and\n" +
+			"UNKNOWN insight rows and UNKNOWN add-on rows), 2 tool or connection error.\n" +
 			"Groups or kinds that cannot be read are reported on stderr and in the JSON\n" +
 			"\"skipped\" list; the exit code reflects only what was scanned.",
 		Args: cobra.NoArgs,
@@ -56,41 +64,24 @@ func newScanCmd(deps Deps) *cobra.Command {
 	f.StringVar(&fl.profile, "profile", "", "AWS shared-config profile (with --cluster)")
 	f.StringVar(&fl.region, "region", "", "AWS region (with --cluster)")
 	f.StringVar(&fl.path, "path", "", "scan manifests under this file or directory instead of a live cluster")
+	f.BoolVar(&fl.insights, "insights", false, "also read EKS Upgrade Insights and reconcile them with the scan (needs --cluster, not --path)")
+	f.BoolVar(&fl.strict, "strict", false, "STALE or UNKNOWN insight rows and UNKNOWN add-on rows count as blockers (exit 1)")
 	f.StringVar(&fl.output, "output", "text", "output format: text|json (table is an alias of text)")
 	return cmd
 }
 
 func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
-	format, err := parseOutput(fl.output)
+	format, target, err := parseScanFlags(fl)
 	if err != nil {
 		return &ToolError{Err: err}
-	}
-	var target *rules.Version
-	if fl.target != "" {
-		t, err := rules.ParseVersion(fl.target)
-		if err != nil {
-			return &ToolError{Err: fmt.Errorf("--target: %w", err)}
-		}
-		target = &t
-	}
-	if fl.pathSet {
-		if err := checkPathFlags(fl, target); err != nil {
-			return &ToolError{Err: err}
-		}
 	}
 	set, err := rules.Load()
 	if err != nil {
 		return &ToolError{Err: err}
 	}
-	var src apiscan.Source
-	if fl.pathSet {
-		src = apiscan.NewManifestSource(fl.path, cmd.ErrOrStderr())
-	} else {
-		disc, dyn, err := deps.Kube(fl.kubeconfig, fl.kubeContext)
-		if err != nil {
-			return &ToolError{Err: err}
-		}
-		src = apiscan.NewClusterSource(disc, dyn, set)
+	src, dyn, err := newSource(cmd, deps, fl, set)
+	if err != nil {
+		return &ToolError{Err: err}
 	}
 
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
@@ -99,27 +90,92 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 	ctx, cancel := context.WithTimeout(ctx, scanTimeout)
 	defer cancel()
 
-	var tv rules.Version
-	if fl.pathSet && fl.cluster == "" {
-		tv = *target // checkPathFlags guarantees it; there is no current version to validate against
-	} else {
-		current, err := currentVersion(ctx, deps, fl, src)
-		if err != nil {
-			return &ToolError{Err: interruptedOr(ctx, err)}
-		}
-		tv = current.Next()
-		if target != nil {
-			tv = *target
-		}
-		if err := rules.ValidateTarget(current, tv); err != nil {
-			return &ToolError{Err: err}
-		}
+	cur, tv, err := resolveTarget(ctx, deps, fl, src, target)
+	if err != nil {
+		return &ToolError{Err: interruptedOr(ctx, err)}
 	}
-
 	res, err := apiscan.Scan(ctx, src, set, tv)
 	if err != nil {
 		return &ToolError{Err: interruptedOr(ctx, err)}
 	}
+	annotate(cmd, deps, fl, &res)
+	ex, err := collectExtras(ctx, cmd.ErrOrStderr(), deps, fl, res, cur, tv, dyn)
+	if err != nil {
+		return &ToolError{Err: interruptedOr(ctx, err)}
+	}
+	if format == outputJSON {
+		err = report.ScanJSON(cmd.OutOrStdout(), res, ex)
+	} else {
+		err = report.ScanText(cmd.OutOrStdout(), res, ex)
+	}
+	if err != nil {
+		return &ToolError{Err: err}
+	}
+	if n := strictBlockers(res, ex, fl.strict); n > 0 {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "tideclear: --strict: %s\n",
+			report.Plural(n, "stale/unknown item counts as a blocker", "stale/unknown items count as blockers"))
+	}
+	return exitFor(res, ex, fl.strict)
+}
+
+// parseScanFlags validates the flags that need no client: output format,
+// --target, and the --path and --insights combinations.
+func parseScanFlags(fl scanFlags) (outputFormat, *rules.Version, error) {
+	format, err := parseOutput(fl.output)
+	if err != nil {
+		return 0, nil, err
+	}
+	var target *rules.Version
+	if fl.target != "" {
+		t, err := rules.ParseVersion(fl.target)
+		if err != nil {
+			return 0, nil, fmt.Errorf("--target: %w", err)
+		}
+		target = &t
+	}
+	if err := checkInsightsFlags(fl); err != nil {
+		return 0, nil, err
+	}
+	if fl.pathSet {
+		if err := checkPathFlags(fl, target); err != nil {
+			return 0, nil, err
+		}
+	}
+	return format, target, nil
+}
+
+// newSource builds the scan source; the dynamic client is nil for a --path scan.
+func newSource(cmd *cobra.Command, deps Deps, fl scanFlags, set *rules.Set) (apiscan.Source, dynamic.Interface, error) {
+	if fl.pathSet {
+		return apiscan.NewManifestSource(fl.path, cmd.ErrOrStderr()), nil, nil
+	}
+	disc, dyn, err := deps.Kube(fl.kubeconfig, fl.kubeContext)
+	if err != nil {
+		return nil, nil, err
+	}
+	return apiscan.NewClusterSource(disc, dyn, set), dyn, nil
+}
+
+// resolveTarget returns the cluster's current version and the version the
+// scan checks against: --target, else the current version's next minor.
+// A --path scan without --cluster has no current version (zero value).
+func resolveTarget(ctx context.Context, deps Deps, fl scanFlags, src apiscan.Source, target *rules.Version) (current, tv rules.Version, err error) {
+	if fl.pathSet && fl.cluster == "" {
+		return rules.Version{}, *target, nil // checkPathFlags guarantees it; there is no current version to validate against
+	}
+	current, err = currentVersion(ctx, deps, fl, src)
+	if err != nil {
+		return rules.Version{}, rules.Version{}, err
+	}
+	tv = current.Next()
+	if target != nil {
+		tv = *target
+	}
+	return current, tv, rules.ValidateTarget(current, tv)
+}
+
+// annotate fills the result's cluster identity and echoes skipped groups to stderr.
+func annotate(cmd *cobra.Command, deps Deps, fl scanFlags, res *apiscan.Result) {
 	res.Cluster = apiscan.ClusterInfo{EKSCluster: fl.cluster}
 	res.Path = fl.path
 	if !fl.pathSet && deps.KubeIdentity != nil {
@@ -131,18 +187,18 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "tideclear: warning: %s\n", oneLine(skippedMessage(s)))
 		}
 	}
-	if format == outputJSON {
-		err = report.ScanJSON(cmd.OutOrStdout(), res)
-	} else {
-		err = report.ScanText(cmd.OutOrStdout(), res)
-	}
-	if err != nil {
-		return &ToolError{Err: err}
-	}
-	for _, it := range res.Findings {
-		if it.Finding.Severity == rules.SeverityBlocker {
-			return ErrBlockers
-		}
+}
+
+// checkInsightsFlags: --insights reads the EKS cluster's insights and joins
+// them with a live scan, so it needs --cluster and cannot be used with --path.
+func checkInsightsFlags(fl scanFlags) error {
+	switch {
+	case !fl.insights:
+		return nil
+	case fl.pathSet:
+		return errors.New("--insights needs a live scan: it cannot be combined with --path")
+	case fl.cluster == "":
+		return errors.New("--insights needs --cluster")
 	}
 	return nil
 }

@@ -39,6 +39,33 @@ Removals after 1.37 are not announcements. Most beta types in `k8s.io/api` carry
 `introduced` tag. The deprecated and removed releases are then filled in from the deprecation
 policy's default timeline (three minors each), and the Kubernetes project can extend it.
 
+## Node and AMI rules
+
+`scan` also checks worker nodes. The data lives in `internal/rules/data/nodes.yaml`
+(embedded, strictly decoded: an unknown key is an error), not in the checks.
+
+| Node | Rule |
+|---|---|
+| Managed nodegroup with an `AL2_` amiType (not `AL2023_`) | Amazon Linux 2 |
+| Any node whose `osImage` matches `^Amazon Linux 2( \|$)` ("Amazon Linux 2023" does not) | Amazon Linux 2 |
+| Amazon Linux 2, target 1.35 or later | `BLOCKER`: the kubelet's `failCgroupV1` defaults to true from 1.35 and AL2 is cgroup v1 |
+| Amazon Linux 2, target below 1.35 | `WARNING` (EKS publishes no AL2 AMIs after 1.32) |
+| Managed nodegroup that reports no amiType | `WARNING`, "AMI type not reported"; its nodes are judged by `osImage` |
+| Kubelet newer than the control plane, or more than 3 minors older (now, or after the upgrade) | `WARNING` |
+| Kubelet or nodegroup version that cannot be parsed | `WARNING`, "version unknown" |
+
+A nodegroup's `releaseVersion` is shown but never parsed (it can be an AMI ID or an OS
+release). Fargate nodes are skipped. Nodes of a managed nodegroup are judged through the
+nodegroup row when the nodegroup check ran and that group was judged, except `CUSTOM` groups
+and groups with no amiType, whose nodes are judged by `osImage`. A nodegroup deleted while
+the scan runs is skipped. Only findings get a row.
+
+Sources (fetched 2026-10-20), also recorded in `nodes.yaml`:
+
+- <https://docs.aws.amazon.com/eks/latest/userguide/eks-ami-deprecation-faqs.html>: Kubernetes 1.32 is the last version with EKS AL2 AMIs.
+- <https://kubernetes.io/blog/2026/10/06/kubernetes-cgroups-v2-shift/> and <https://kubernetes.dev/resources/keps/5573>: `failCgroupV1` defaults to true from 1.35.
+- <https://kubernetes.io/releases/version-skew-policy/>: kubelet may be up to three minors older than kube-apiserver, never newer.
+
 ## Refreshing the data
 
 Pluto data:

@@ -23,8 +23,10 @@ import (
 
 // realDeps builds the production adapters (the only place real clients are made).
 func realDeps() Deps {
+	cfg := cachedConfig(loadAWSConfig)
 	return Deps{
-		EKS:          clientFactory(loadAWSConfig),
+		EKS:          clientFor(cfg, buildEKS),
+		Cluster:      clientFor(cfg, buildCluster),
 		Kube:         realKube,
 		KubeIdentity: kubeIdentity,
 		DefaultRegion: func(profile string) (string, error) {
@@ -119,28 +121,55 @@ func loadAWSConfig(profile, region string) (aws.Config, error) {
 	if profile != "" {
 		opts = append(opts, config.WithSharedConfigProfile(profile))
 	}
-	return config.LoadDefaultConfig(context.Background(), opts...)
+	cfg, err := config.LoadDefaultConfig(context.Background(), opts...)
+	if err != nil {
+		return cfg, err
+	}
+	// Outside the SDK's cache, so caching stays; the EKS client does not tag provider failures itself.
+	cfg.Credentials = eksinfo.WrapCredentials(cfg.Credentials)
+	return cfg, nil
 }
 
-// clientFactory loads the AWS config once per profile, with the first
-// requested region as its region, and derives each region's client from it by
-// overriding Region. A load error is returned
-// as-is: it is not specific to any region.
-func clientFactory(load func(profile, region string) (aws.Config, error)) func(profile, region string) (eksinfo.EKSAPI, error) {
+// cachedConfig loads the AWS config once per profile, with the first
+// requested region as its region. A load error is cached and returned as-is:
+// it is not specific to any region.
+func cachedConfig(load func(profile, region string) (aws.Config, error)) func(profile, region string) (aws.Config, error) {
 	type loaded struct {
 		cfg aws.Config
 		err error
 	}
 	cache := map[string]loaded{}
-	return func(profile, region string) (eksinfo.EKSAPI, error) {
+	return func(profile, region string) (aws.Config, error) {
 		l, ok := cache[profile]
 		if !ok {
 			l.cfg, l.err = load(profile, region)
 			cache[profile] = l
 		}
-		if l.err != nil {
-			return nil, l.err
-		}
-		return eks.NewFromConfig(l.cfg, func(o *eks.Options) { o.Region = region }), nil
+		return l.cfg, l.err
 	}
+}
+
+// clientFor derives a client per region from the cached config by overriding Region.
+func clientFor[T any](cfg func(profile, region string) (aws.Config, error), build func(aws.Config, string) T) func(profile, region string) (T, error) {
+	return func(profile, region string) (T, error) {
+		c, err := cfg(profile, region)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return build(c, region), nil
+	}
+}
+
+func buildEKS(cfg aws.Config, region string) eksinfo.EKSAPI {
+	return eks.NewFromConfig(cfg, func(o *eks.Options) { o.Region = region })
+}
+
+func buildCluster(cfg aws.Config, region string) ClusterAPI {
+	return eks.NewFromConfig(cfg, func(o *eks.Options) { o.Region = region })
+}
+
+// clientFactory builds EKS clients from a config cached per profile.
+func clientFactory(load func(profile, region string) (aws.Config, error)) func(profile, region string) (eksinfo.EKSAPI, error) {
+	return clientFor(cachedConfig(load), buildEKS)
 }

@@ -12,7 +12,7 @@ import (
 // the last-applied annotation, and the newest main-resource managedFields
 // entry (status/scale entries are ignored so a controller's later status
 // write cannot mask the apply; ties all count, a missing time is oldest).
-func evidence(u *unstructured.Unstructured, kind string) []Object {
+func evidence(u *unstructured.Unstructured, kind, resource string) []Object {
 	var out []Object
 	seen := map[string]bool{}
 	add := func(apiVersion, origin string) {
@@ -20,7 +20,7 @@ func evidence(u *unstructured.Unstructured, kind string) []Object {
 			return
 		}
 		seen[apiVersion] = true
-		out = append(out, Object{APIVersion: apiVersion, Kind: kind, Namespace: u.GetNamespace(), Name: u.GetName(), Origin: origin})
+		out = append(out, Object{APIVersion: apiVersion, Kind: kind, Namespace: u.GetNamespace(), Name: u.GetName(), Origin: origin, Resource: resource})
 	}
 	add(lastAppliedAPIVersion(u), originLastApplied)
 	for _, v := range newestMainAPIVersions(u.GetManagedFields()) {

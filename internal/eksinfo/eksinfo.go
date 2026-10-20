@@ -83,7 +83,7 @@ func (l Lister) List(ctx context.Context, regions []string, name string) ([]Clus
 			all = append(all, cs...)
 		case errors.As(err, &ce):
 			return nil, nil, ce.err
-		case multi && (isAuthError(err) || isTimeout(err)):
+		case multi && !isCredentialError(err) && (isAuthError(err) || isTimeout(err)):
 			skipped = append(skipped, SkippedRegion{Region: r, Err: err})
 		default:
 			return nil, nil, fmt.Errorf("region %s: %w", r, err)
@@ -278,10 +278,43 @@ func isAuthError(err error) bool {
 	}
 }
 
+// IsAccessDenied reports an IAM permission failure (an AccessDenied* code from
+// EKS itself). Credential-retrieval errors and bad-credential codes
+// (UnrecognizedClientException, InvalidClientTokenId) are not permission failures.
+func IsAccessDenied(err error) bool {
+	var ae smithy.APIError
+	return !isCredentialError(err) && errors.As(err, &ae) && strings.HasPrefix(ae.ErrorCode(), "AccessDenied")
+}
+
+// IsCredentialFailure reports that the caller's credentials are unusable
+// (missing, expired, or rejected), so no per-check degrade can help: the
+// whole run must stop. A plain AccessDenied is a permission gap and is not one.
+func IsCredentialFailure(err error) bool {
+	if isCredentialError(err) {
+		return true
+	}
+	var ae smithy.APIError
+	if !errors.As(err, &ae) {
+		return false
+	}
+	switch ae.ErrorCode() {
+	case "UnrecognizedClientException", "InvalidClientTokenId", "ExpiredToken", "ExpiredTokenException",
+		"RequestExpired", "InvalidSignatureException", "SignatureDoesNotMatch", "AuthFailure",
+		"IncompleteSignature", "MissingAuthenticationToken", "MissingAuthenticationTokenException",
+		"InvalidAccessKeyId", "TokenRefreshRequired":
+		return true
+	}
+	return false
+}
+
 // isCredentialError reports a failure to obtain credentials: the SDK nests an
 // operation error from another service (STS AssumeRole, SSO) under the EKS
 // call's own, so an AccessDenied there is not an EKS-region problem.
 func isCredentialError(err error) bool {
+	var cre *CredentialRetrievalError // the provider itself failed (see WrapCredentials)
+	if errors.As(err, &cre) {
+		return true
+	}
 	for e := err; e != nil; e = errors.Unwrap(e) {
 		var oe *smithy.OperationError
 		if errors.As(e, &oe) && oe.ServiceID != "" && oe.ServiceID != eks.ServiceID {

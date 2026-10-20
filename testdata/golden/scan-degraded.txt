@@ -1,0 +1,15 @@
+cluster: demo-ctx (api.example.test) [EKS: demo-cluster]
+KIND         APIVERSION                            NAMESPACE  NAME             REPLACEMENT                      REMOVED IN        SEVERITY
+DeviceClass  resource.k8s.io/v1beta1               -          tideclear-probe  resource.k8s.io/v1               1.38 (projected)  WARNING
+FlowSchema   flowcontrol.apiserver.k8s.io/v1beta3  -          web              flowcontrol.apiserver.k8s.io/v1  1.32              BLOCKER
+warning: 2 groups/kinds skipped (see stderr); results are partial
+3 objects had no apiVersion evidence and were not checked
+
+upgrade insights:
+APIVERSION  KIND  AWS STATUS  VERDICT  EVIDENCE
+-           -     UNKNOWN     UNKNOWN  insights unavailable: access denied
+check skipped: insights: access denied
+check skipped: addons: access denied
+check skipped: nodegroups: access denied
+check skipped: nodes: access denied
+result not clean: 1 unknown, 4 checks skipped
