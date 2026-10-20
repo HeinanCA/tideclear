@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/smithy-go"
@@ -290,7 +291,8 @@ func IsAccessDenied(err error) bool {
 // (missing, expired, or rejected), so no per-check degrade can help: the
 // whole run must stop. A plain AccessDenied is a permission gap and is not one.
 func IsCredentialFailure(err error) bool {
-	if isCredentialError(err) {
+	var se *v4.SigningError // the SDK wraps every credential-provider failure (expired SSO token, no IMDS role) in one
+	if isCredentialError(err) || errors.As(err, &se) {
 		return true
 	}
 	var ae smithy.APIError
@@ -300,7 +302,8 @@ func IsCredentialFailure(err error) bool {
 	switch ae.ErrorCode() {
 	case "UnrecognizedClientException", "InvalidClientTokenId", "ExpiredToken", "ExpiredTokenException",
 		"RequestExpired", "InvalidSignatureException", "SignatureDoesNotMatch", "AuthFailure",
-		"IncompleteSignature", "MissingAuthenticationToken", "MissingAuthenticationTokenException":
+		"IncompleteSignature", "MissingAuthenticationToken", "MissingAuthenticationTokenException",
+		"InvalidAccessKeyId", "TokenRefreshRequired":
 		return true
 	}
 	return false

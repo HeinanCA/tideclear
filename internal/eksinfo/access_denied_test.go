@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/smithy-go"
@@ -40,6 +41,13 @@ func TestIsAccessDenied(t *testing.T) {
 	}
 }
 
+// signingErr is how the SDK reports a failed credential provider: a
+// SigningError (aws/signer/v4 middleware) inside the EKS operation error.
+func signingErr(cause error) error {
+	return &smithy.OperationError{ServiceID: eks.ServiceID, OperationName: "ListInsights",
+		Err: &v4.SigningError{Err: fmt.Errorf("failed to retrieve credentials: %w", cause)}}
+}
+
 func TestIsCredentialFailure(t *testing.T) {
 	apiErr := func(code string) error {
 		return &smithy.OperationError{ServiceID: eks.ServiceID, OperationName: "ListInsights",
@@ -54,6 +62,11 @@ func TestIsCredentialFailure(t *testing.T) {
 		want bool
 	}{
 		{"credential retrieval", nestedSTS, true},
+		{"signing: expired SSO token", signingErr(errors.New("the SSO session has expired or is invalid")), true},
+		{"signing: provider failure", signingErr(errors.New("no EC2 IMDS role found")), true},
+		{"InvalidAccessKeyId", apiErr("InvalidAccessKeyId"), true},
+		{"TokenRefreshRequired", apiErr("TokenRefreshRequired"), true},
+		{"plain error mentioning credentials", errors.New("failed to retrieve credentials"), false},
 		{"UnrecognizedClientException", apiErr("UnrecognizedClientException"), true},
 		{"InvalidClientTokenId", apiErr("InvalidClientTokenId"), true},
 		{"ExpiredToken", apiErr("ExpiredToken"), true},
