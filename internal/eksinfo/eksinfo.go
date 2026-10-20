@@ -286,6 +286,25 @@ func IsAccessDenied(err error) bool {
 	return !isCredentialError(err) && errors.As(err, &ae) && strings.HasPrefix(ae.ErrorCode(), "AccessDenied")
 }
 
+// IsCredentialFailure reports that the caller's credentials are unusable
+// (missing, expired, or rejected), so no per-check degrade can help: the
+// whole run must stop. A plain AccessDenied is a permission gap and is not one.
+func IsCredentialFailure(err error) bool {
+	if isCredentialError(err) {
+		return true
+	}
+	var ae smithy.APIError
+	if !errors.As(err, &ae) {
+		return false
+	}
+	switch ae.ErrorCode() {
+	case "UnrecognizedClientException", "InvalidClientTokenId", "ExpiredToken", "ExpiredTokenException",
+		"RequestExpired", "InvalidSignatureException", "SignatureDoesNotMatch", "AuthFailure":
+		return true
+	}
+	return false
+}
+
 // isCredentialError reports a failure to obtain credentials: the SDK nests an
 // operation error from another service (STS AssumeRole, SSO) under the EKS
 // call's own, so an AccessDenied there is not an EKS-region problem.

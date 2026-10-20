@@ -48,7 +48,7 @@ func scanSample(t *testing.T) apiscan.Result {
 
 func TestScanTextGolden(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanText(&b, scanSample(t)); err != nil {
+	if err := ScanText(&b, scanSample(t), Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan.txt", b.Bytes())
@@ -56,7 +56,7 @@ func TestScanTextGolden(t *testing.T) {
 
 func TestScanTextEmpty(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanText(&b, apiscan.Result{Target: target138}); err != nil {
+	if err := ScanText(&b, apiscan.Result{Target: target138}, Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan-empty.txt", b.Bytes())
@@ -65,7 +65,7 @@ func TestScanTextEmpty(t *testing.T) {
 func TestScanTextEmptyWithSkipsIsNotCleanLine(t *testing.T) {
 	var b bytes.Buffer
 	r := apiscan.Result{Target: target138, Skipped: scanSample(t).Skipped}
-	if err := ScanText(&b, r); err != nil {
+	if err := ScanText(&b, r, Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan-empty-skipped.txt", b.Bytes())
@@ -73,7 +73,7 @@ func TestScanTextEmptyWithSkipsIsNotCleanLine(t *testing.T) {
 
 func TestScanTextEmptyWithUnverifiedStillNotesThem(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanText(&b, apiscan.Result{Target: target138, Unverified: 1}); err != nil {
+	if err := ScanText(&b, apiscan.Result{Target: target138, Unverified: 1}, Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	want := "no findings for target 1.38\n1 objects had no apiVersion evidence and were not checked\n"
@@ -84,7 +84,7 @@ func TestScanTextEmptyWithUnverifiedStillNotesThem(t *testing.T) {
 
 func TestScanJSONGolden(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanJSON(&b, scanSample(t)); err != nil {
+	if err := ScanJSON(&b, scanSample(t), Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan.json", b.Bytes())
@@ -92,7 +92,7 @@ func TestScanJSONGolden(t *testing.T) {
 
 func TestScanJSONEmptyArrays(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanJSON(&b, apiscan.Result{Target: target138}); err != nil {
+	if err := ScanJSON(&b, apiscan.Result{Target: target138}, Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan-empty.json", b.Bytes())
@@ -124,7 +124,7 @@ func pathSample(t *testing.T) apiscan.Result {
 
 func TestScanTextPathHeader(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanText(&b, pathSample(t)); err != nil {
+	if err := ScanText(&b, pathSample(t), Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.SplitN(b.String(), "\n", 2)[0]; got != "path: deploy/manifests" {
@@ -137,7 +137,7 @@ func TestScanTextPathHeader(t *testing.T) {
 
 func TestScanJSONPathGolden(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanJSON(&b, pathSample(t)); err != nil {
+	if err := ScanJSON(&b, pathSample(t), Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan-path.json", b.Bytes())
@@ -155,7 +155,7 @@ func TestScanJSONPathGolden(t *testing.T) {
 
 func TestScanJSONLiveHasNoPathField(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanJSON(&b, scanSample(t)); err != nil {
+	if err := ScanJSON(&b, scanSample(t), Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(b.String(), `"path"`) {
@@ -167,7 +167,7 @@ func TestScanTextPathGolden(t *testing.T) {
 	var b bytes.Buffer
 	r := pathSample(t)
 	r.Unverified = 1
-	if err := ScanText(&b, r); err != nil {
+	if err := ScanText(&b, r, Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan-path.txt", b.Bytes())
@@ -175,7 +175,7 @@ func TestScanTextPathGolden(t *testing.T) {
 
 func TestScanJSONPathEmptyKeepsFilesScannedZero(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanJSON(&b, apiscan.Result{Target: target138, Path: "deploy/empty"}); err != nil {
+	if err := ScanJSON(&b, apiscan.Result{Target: target138, Path: "deploy/empty"}, Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), `"filesScanned": 0`) {
@@ -185,7 +185,7 @@ func TestScanJSONPathEmptyKeepsFilesScannedZero(t *testing.T) {
 
 func TestScanJSONLiveOmitsFilesScanned(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanJSON(&b, scanSample(t)); err != nil {
+	if err := ScanJSON(&b, scanSample(t), Extras{}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(b.String(), "filesScanned") || strings.Contains(b.String(), "ORIGIN") {
