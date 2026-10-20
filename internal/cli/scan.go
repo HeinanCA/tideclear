@@ -42,7 +42,7 @@ func newScanCmd(deps Deps) *cobra.Command {
 			"from the API server. --cluster and --context are independent: they must name\n" +
 			"the same cluster.\n\n" +
 			"With --insights (and --cluster) the EKS Upgrade Insights are reconciled with the\n" +
-			"live scan: BLOCKER (live objects, or a client called the API in the last 7 days),\n" +
+			"live scan: BLOCKER (live objects, or a client called the API within 7 days of the insight's last refresh),\n" +
 			"STALE (last call older than 7 days; the insight clears 30 days after it), OK or\n" +
 			"UNKNOWN. If insights cannot be read the rest of the report still prints, with an\n" +
 			"UNKNOWN row; expired or invalid credentials exit 2.\n\n" +

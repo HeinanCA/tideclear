@@ -48,8 +48,8 @@ func insightSummary(id, name string, st types.InsightStatusValue, at time.Time) 
 
 func twoPageAWS(at time.Time) *fakeAWS {
 	return &fakeAWS{pages: map[string]*eks.ListInsightsOutput{
-		"":   {Insights: []types.InsightSummary{insightSummary("i1", "Deprecated API usage", types.InsightStatusValueError, at)}, NextToken: aws.String("t2")},
-		"t2": {Insights: []types.InsightSummary{insightSummary("i2", "Add-on compatibility", types.InsightStatusValuePassing, at)}},
+		"":   {Insights: []types.InsightSummary{insightSummary("i1", "Deprecated APIs removed in Kubernetes v1.32", types.InsightStatusValueError, at)}, NextToken: aws.String("t2")},
+		"t2": {Insights: []types.InsightSummary{insightSummary("i2", "EKS add-on version compatibility", types.InsightStatusValuePassing, at)}},
 	}}
 }
 
@@ -72,7 +72,7 @@ func TestInsightsTextShowsFreshness(t *testing.T) {
 	if code != 0 || se != "" {
 		t.Fatalf("exit=%d stderr=%q", code, se)
 	}
-	for _, want := range []string{"NAME", "Deprecated API usage", "Add-on compatibility", "ERROR", "PASSING", "14h ago"} {
+	for _, want := range []string{"NAME", "Deprecated APIs removed in Kubernetes v1.32", "EKS add-on version compatibility", "ERROR", "PASSING", "14h ago"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout missing %q:\n%s", want, out)
 		}

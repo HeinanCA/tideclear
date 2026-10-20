@@ -52,9 +52,9 @@ func summary(id, name, ver string, st types.InsightStatusValue) types.InsightSum
 
 func twoPages() *fakeAPI {
 	return &fakeAPI{pages: map[string]*eks.ListInsightsOutput{
-		"": {Insights: []types.InsightSummary{summary("i1", "Deprecated API usage", "1.32", types.InsightStatusValueError)}, NextToken: aws.String("t2")},
+		"": {Insights: []types.InsightSummary{summary("i1", "Deprecated APIs removed in Kubernetes v1.32", "1.32", types.InsightStatusValueError)}, NextToken: aws.String("t2")},
 		"t2": {Insights: []types.InsightSummary{
-			summary("i2", "Add-on compatibility", "1.32", types.InsightStatusValuePassing),
+			summary("i2", "EKS add-on version compatibility", "1.32", types.InsightStatusValuePassing),
 			summary("i3", "Kubelet version skew", "1.32", types.InsightStatusValueUnknown),
 		}},
 	}}
@@ -134,7 +134,7 @@ func TestListStatusMapping(t *testing.T) {
 func TestListCopiesSummaryFields(t *testing.T) {
 	api := twoPages()
 	got, _ := List(context.Background(), api, "demo", nil)
-	want := Insight{ID: "i1", Name: "Deprecated API usage", Target: "1.32", Status: StatusError, Reason: "why i1", LastRefresh: refreshed}
+	want := Insight{ID: "i1", Name: "Deprecated APIs removed in Kubernetes v1.32", Target: "1.32", Status: StatusError, Reason: "why i1", LastRefresh: refreshed}
 	if !reflect.DeepEqual(got[0], want) {
 		t.Errorf("got %+v\nwant %+v", got[0], want)
 	}
@@ -165,7 +165,7 @@ func TestListError(t *testing.T) {
 func documentedDetail() *types.Insight {
 	last := time.Date(2026, 10, 18, 8, 30, 0, 0, time.UTC)
 	return &types.Insight{
-		Id: aws.String("i1"), Name: aws.String("Deprecated API usage"), KubernetesVersion: aws.String("1.32"),
+		Id: aws.String("i1"), Name: aws.String("Deprecated APIs removed in Kubernetes v1.32"), KubernetesVersion: aws.String("1.32"),
 		InsightStatus:   &types.InsightStatus{Status: types.InsightStatusValueError, Reason: aws.String("deprecated APIs in use")},
 		LastRefreshTime: &refreshed,
 		CategorySpecificSummary: &types.InsightCategorySpecificSummary{
