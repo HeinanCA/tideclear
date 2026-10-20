@@ -14,7 +14,7 @@ func nodesSection(w io.Writer, rows []nodes.Row) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	if _, err := fmt.Fprintln(w, "nodes:"); err != nil {
+	if _, err := fmt.Fprint(w, "\nnodes:\n"); err != nil {
 		return err
 	}
 	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)

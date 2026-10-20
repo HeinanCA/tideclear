@@ -28,9 +28,12 @@ type nodegroupState struct {
 func nodegroupExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, fl scanFlags, current, target rules.Version, nr *rules.NodeRules, ex report.Extras) (report.Extras, nodegroupState, error) {
 	callCtx, cancel := context.WithTimeout(ctx, extrasTimeout)
 	defer cancel()
-	rows, groups, err := nodes.CheckNodegroups(callCtx, api, fl.cluster, current, target, nr)
+	rows, groups, gone, err := nodes.CheckNodegroups(callCtx, api, fl.cluster, current, target, nr)
 	switch {
 	case err == nil:
+		for _, name := range gone {
+			_, _ = fmt.Fprintf(stderr, "tideclear: nodegroup %s was deleted during the scan\n", oneLine(name))
+		}
 		ex.Nodes = append(ex.Nodes, rows...)
 		return ex, nodegroupState{ran: true, groups: groups}, nil
 	case eksinfo.IsCredentialFailure(err), ctx.Err() != nil:

@@ -149,3 +149,24 @@ func exitFor(res apiscan.Result, ex report.Extras, strict bool) error {
 	}
 	return nil
 }
+
+// strictBlockers counts the STALE and UNKNOWN items that make --strict exit 1
+// where the same scan would exit 0; zero when strict is off or a real blocker
+// already decides.
+func strictBlockers(res apiscan.Result, ex report.Extras, strict bool) int {
+	if !strict || exitFor(res, ex, false) != nil {
+		return 0
+	}
+	n := 0
+	for _, r := range ex.Insights {
+		if r.Verdict == reconcile.VerdictStale || r.Verdict == reconcile.VerdictUnknown {
+			n++
+		}
+	}
+	for _, r := range ex.Addons {
+		if r.Status == addons.StatusUnknown {
+			n++
+		}
+	}
+	return n
+}

@@ -13,7 +13,7 @@ import (
 func nodesSample() Extras {
 	return Extras{Nodes: []nodes.Row{
 		{Source: "nodegroup", Name: "workers-al2", Version: "1.31", AMIType: "AL2_x86_64", ReleaseVersion: "1.31.4-20250101",
-			Severity: rules.SeverityBlocker, Reasons: []string{"Amazon Linux 2 (amiType AL2_x86_64) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane to 1.35"}},
+			Severity: rules.SeverityBlocker, Reasons: []string{"Amazon Linux 2 (amiType AL2_x86_64) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane past 1.32"}},
 		{Source: "node", Name: "ip-10-0-0-7", Version: "v1.27.9-eks-5e0fdde", OSImage: "Amazon Linux 2",
 			Severity: rules.SeverityWarning, Reasons: []string{"kubelet 1.27 is 4 minors behind the control plane 1.31 (max 3)", "version note"}},
 		{Source: "node", Name: "ip-10-0-0-9", Version: "weird", OSImage: "Bottlerocket OS 1.30.0",

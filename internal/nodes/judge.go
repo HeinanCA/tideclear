@@ -25,8 +25,8 @@ func (j *judgement) add(sev rules.Severity, reason string) {
 // The reason is one clause: the report joins reasons with "; ".
 func (j *judgement) al2(nr *rules.NodeRules, target rules.Version, what string) {
 	sev := nr.AL2Severity(target)
-	msg := fmt.Sprintf("Amazon Linux 2 (%s) is cgroup v1: kubelet %s+ will not start on it and EKS AL2 AMIs stop at %s, so these nodes cannot follow the control plane to %s",
-		what, nr.CgroupV2Required, nr.LastAL2AMIVersion, target)
+	msg := fmt.Sprintf("Amazon Linux 2 (%[1]s) is cgroup v1: kubelet %[2]s+ will not start on it and EKS AL2 AMIs stop at %[3]s, so these nodes cannot follow the control plane past %[3]s",
+		what, nr.CgroupV2Required, nr.LastAL2AMIVersion)
 	j.add(sev, msg)
 }
 

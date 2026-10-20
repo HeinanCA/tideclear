@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "target": "1.38",
+  "cluster": {
+    "context": "demo-ctx",
+    "server": "api.example.test"
+  },
+  "eksCluster": "demo-cluster",
+  "findings": [
+    {
+      "kind": "DeviceClass",
+      "apiVersion": "resource.k8s.io/v1beta1",
+      "namespace": "",
+      "name": "tideclear-probe",
+      "replacement": "resource.k8s.io/v1",
+      "removedIn": "1.38",
+      "deprecatedIn": "1.35",
+      "severity": "WARNING",
+      "source": "k8s-lifecycle",
+      "projected": true,
+      "origin": "managedFields"
+    },
+    {
+      "kind": "FlowSchema",
+      "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
+      "namespace": "",
+      "name": "web",
+      "replacement": "flowcontrol.apiserver.k8s.io/v1",
+      "removedIn": "1.32",
+      "deprecatedIn": "1.29",
+      "severity": "BLOCKER",
+      "source": "k8s-lifecycle",
+      "projected": false,
+      "origin": "last-applied"
+    },
+    {
+      "kind": "Ingress",
+      "apiVersion": "extensions/v1beta1",
+      "namespace": "demo",
+      "name": "web",
+      "replacement": "networking.k8s.io/v1",
+      "removedIn": "1.22",
+      "deprecatedIn": "1.14",
+      "severity": "BLOCKER",
+      "source": "k8s-lifecycle",
+      "projected": false,
+      "origin": "managedFields"
+    },
+    {
+      "kind": "LeaseCandidate",
+      "apiVersion": "coordination.k8s.io/v1beta1",
+      "namespace": "demo",
+      "name": "api",
+      "replacement": "",
+      "removedIn": "1.39",
+      "deprecatedIn": "1.36",
+      "severity": "WARNING",
+      "source": "k8s-lifecycle",
+      "projected": true,
+      "origin": "managedFields"
+    }
+  ],
+  "skipped": [
+    {
+      "group": "metrics.example.dev",
+      "kind": "",
+      "reason": "503 Service Unavailable"
+    },
+    {
+      "group": "networking.k8s.io",
+      "kind": "Ingress",
+      "reason": "forbidden"
+    }
+  ],
+  "unverified": 3,
+  "insights": [
+    {
+      "usage": "/apis/flowcontrol.apiserver.k8s.io/v1beta3/flowschemas",
+      "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
+      "kind": "FlowSchema",
+      "resource": "flowschemas",
+      "awsStatus": "ERROR",
+      "verdict": "BLOCKER",
+      "clearsOn": null,
+      "reason": "live objects use this API version",
+      "lastRefreshTime": null,
+      "objects": [
+        {
+          "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
+          "kind": "FlowSchema",
+          "namespace": "",
+          "name": "web",
+          "origin": "managedFields"
+        }
+      ],
+      "clients": []
+    },
+    {
+      "usage": "/apis/networking.k8s.io/v1beta1/ingresses",
+      "apiVersion": "networking.k8s.io/v1beta1",
+      "kind": "Ingress",
+      "resource": "ingresses",
+      "awsStatus": "ERROR",
+      "verdict": "BLOCKER",
+      "clearsOn": null,
+      "reason": "a client still calls this API",
+      "lastRefreshTime": null,
+      "objects": [],
+      "clients": [
+        {
+          "userAgent": "demo-controller/1.2",
+          "requests": 42,
+          "lastRequestTime": "2026-10-19T09:30:00Z"
+        }
+      ]
+    },
+    {
+      "usage": "/apis/apps/v1beta2/deployments",
+      "apiVersion": "apps/v1beta2",
+      "kind": "Deployment",
+      "resource": "deployments",
+      "awsStatus": "WARNING",
+      "verdict": "STALE",
+      "clearsOn": "2026-11-12T08:00:00Z",
+      "reason": "last call is older than 7 days",
+      "lastRefreshTime": null,
+      "objects": [],
+      "clients": [
+        {
+          "userAgent": "kubectl/1.28",
+          "requests": 3,
+          "lastRequestTime": "2026-10-13T08:00:00Z"
+        }
+      ]
+    },
+    {
+      "usage": "/apis/batch/v1beta1/cronjobs",
+      "apiVersion": "batch/v1beta1",
+      "kind": "",
+      "resource": "cronjobs",
+      "awsStatus": "ERROR",
+      "verdict": "UNKNOWN",
+      "clearsOn": null,
+      "reason": "not scanned live: the live scan did not read this resource",
+      "lastRefreshTime": null,
+      "objects": [],
+      "clients": [
+        {
+          "userAgent": "old-agent",
+          "requests": 1,
+          "lastRequestTime": "2026-10-13T08:00:00Z"
+        }
+      ]
+    },
+    {
+      "usage": "/apis/policy/v1beta1/poddisruptionbudgets",
+      "apiVersion": "policy/v1beta1",
+      "kind": "PodDisruptionBudget",
+      "resource": "poddisruptionbudgets",
+      "awsStatus": "PASSING",
+      "verdict": "OK",
+      "clearsOn": null,
+      "reason": "",
+      "lastRefreshTime": null,
+      "objects": [],
+      "clients": []
+    }
+  ],
+  "addons": [
+    {
+      "name": "demo-dns",
+      "current": "v1.1.0-eksbuild.1",
+      "minCompatible": "",
+      "status": "OK",
+      "severity": "",
+      "reason": "",
+      "insightNote": ""
+    },
+    {
+      "name": "demo-net",
+      "current": "v1.0.0-eksbuild.1",
+      "minCompatible": "v1.2.0-eksbuild.1",
+      "status": "INCOMPATIBLE",
+      "severity": "WARNING",
+      "reason": "",
+      "insightNote": "insight lists this version as compatible; direct check says not"
+    },
+    {
+      "name": "demo-agent",
+      "current": "v3.0.0",
+      "minCompatible": "",
+      "status": "UNKNOWN",
+      "severity": "",
+      "reason": "no version of this add-on lists Kubernetes 1.32 as compatible",
+      "insightNote": ""
+    }
+  ],
+  "nodes": [
+    {
+      "source": "nodegroup",
+      "name": "workers-al2",
+      "version": "1.31",
+      "amiType": "AL2_x86_64",
+      "releaseVersion": "1.31.4-20250101",
+      "osImage": "",
+      "severity": "BLOCKER",
+      "reasons": [
+        "Amazon Linux 2 (amiType AL2_x86_64) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane past 1.32"
+      ]
+    },
+    {
+      "source": "node",
+      "name": "ip-10-0-0-7",
+      "version": "v1.27.9-eks-5e0fdde",
+      "amiType": "",
+      "releaseVersion": "",
+      "osImage": "Amazon Linux 2",
+      "severity": "WARNING",
+      "reasons": [
+        "kubelet 1.27 is 4 minors behind the control plane 1.31 (max 3)",
+        "version note"
+      ]
+    },
+    {
+      "source": "node",
+      "name": "ip-10-0-0-9",
+      "version": "weird",
+      "amiType": "",
+      "releaseVersion": "",
+      "osImage": "Bottlerocket OS 1.30.0",
+      "severity": "WARNING",
+      "reasons": [
+        "version unknown"
+      ]
+    }
+  ]
+}

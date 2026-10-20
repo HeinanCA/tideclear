@@ -83,7 +83,7 @@
       "osImage": "",
       "severity": "BLOCKER",
       "reasons": [
-        "Amazon Linux 2 (amiType AL2_x86_64) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane to 1.35"
+        "Amazon Linux 2 (amiType AL2_x86_64) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane past 1.32"
       ]
     },
     {
