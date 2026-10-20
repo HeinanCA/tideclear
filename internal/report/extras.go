@@ -1,6 +1,7 @@
 package report
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/HeinanCA/tideclear/internal/addons"
@@ -22,14 +23,20 @@ type Extras struct {
 	Skipped     []CheckSkipped
 }
 
-// unknowns counts the rows that leave the result unproven.
-func (e Extras) unknowns() int {
+// verdicts counts the reconcile rows with verdict v.
+func (e Extras) verdicts(v reconcile.Verdict) int {
 	n := 0
 	for _, r := range e.Insights {
-		if r.Verdict == reconcile.VerdictUnknown {
+		if r.Verdict == v {
 			n++
 		}
 	}
+	return n
+}
+
+// addonUnknowns counts the add-on rows whose status is unproven.
+func (e Extras) addonUnknowns() int {
+	n := 0
 	for _, r := range e.Addons {
 		if r.Status == addons.StatusUnknown {
 			n++
@@ -37,6 +44,9 @@ func (e Extras) unknowns() int {
 	}
 	return n
 }
+
+// unknowns counts the rows that leave the result unproven.
+func (e Extras) unknowns() int { return e.verdicts(reconcile.VerdictUnknown) + e.addonUnknowns() }
 
 // extrasJSON is embedded in scanDoc. A pointer to a slice keeps an empty
 // insights or add-ons array visible (present whenever that check ran) while a nil one is omitted.
@@ -129,4 +139,16 @@ func timePtr(t *time.Time) *string {
 	}
 	s := t.UTC().Format(time.RFC3339)
 	return &s
+}
+
+// StrictItems counts the rows --strict turns into blockers: STALE and UNKNOWN
+// reconcile rows and UNKNOWN add-on rows.
+func (e Extras) StrictItems() int { return e.verdicts(reconcile.VerdictStale) + e.unknowns() }
+
+// Plural formats n with the singular or plural phrase, e.g. "1 check skipped".
+func Plural(n int, singular, plural string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, singular)
+	}
+	return fmt.Sprintf("%d %s", n, plural)
 }

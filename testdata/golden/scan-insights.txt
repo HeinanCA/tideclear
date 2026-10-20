@@ -1,17 +1,16 @@
 cluster: demo-ctx (api.example.test) [EKS: demo-cluster]
-KIND            APIVERSION                            NAMESPACE  NAME             REPLACEMENT                      REMOVED IN        SEVERITY
-DeviceClass     resource.k8s.io/v1beta1               -          tideclear-probe  resource.k8s.io/v1               1.38 (projected)  WARNING
-FlowSchema      flowcontrol.apiserver.k8s.io/v1beta3  -          web              flowcontrol.apiserver.k8s.io/v1  1.32              BLOCKER
-Ingress         extensions/v1beta1                    demo       web              networking.k8s.io/v1             1.22              BLOCKER
-LeaseCandidate  coordination.k8s.io/v1beta1           demo       api              -                                1.39 (projected)  WARNING
+KIND         APIVERSION                            NAMESPACE  NAME             REPLACEMENT                      REMOVED IN        SEVERITY
+DeviceClass  resource.k8s.io/v1beta1               -          tideclear-probe  resource.k8s.io/v1               1.38 (projected)  WARNING
+FlowSchema   flowcontrol.apiserver.k8s.io/v1beta3  -          web              flowcontrol.apiserver.k8s.io/v1  1.32              BLOCKER
+Ingress      extensions/v1beta1                    demo       web              networking.k8s.io/v1             1.22              BLOCKER
 warning: 2 groups/kinds skipped (see stderr); results are partial
 3 objects had no apiVersion evidence and were not checked
 
 upgrade insights:
-APIVERSION                            KIND                 AWS STATUS  VERDICT                   EVIDENCE
-flowcontrol.apiserver.k8s.io/v1beta3  FlowSchema           ERROR       BLOCKER                   object FlowSchema web
-networking.k8s.io/v1beta1             Ingress              ERROR       BLOCKER                   client demo-controller/1.2 x42, last 2026-10-19
-apps/v1beta2                          Deployment           WARNING     STALE, clears 2026-11-12  client kubectl/1.28 x3, last 2026-10-13
-batch/v1beta1                         -                    ERROR       UNKNOWN                   client old-agent x1, last 2026-10-13; not scanned live: the live scan did not read this resource
-policy/v1beta1                        PodDisruptionBudget  PASSING     OK                        -
-result not clean: 1 unknown
+APIVERSION                            KIND                        AWS STATUS  VERDICT                   EVIDENCE
+flowcontrol.apiserver.k8s.io/v1beta3  FlowSchema                  ERROR       BLOCKER                   object FlowSchema web
+apidiscovery.k8s.io/v2beta1           APIGroupDiscovery           ERROR       BLOCKER                   client demo-controller/1.2 x42, last 2026-10-19
+flowcontrol.apiserver.k8s.io/v1beta3  PriorityLevelConfiguration  WARNING     STALE, clears 2026-11-09  client kubectl/1.28 x3, last 2026-10-10
+batch/v1beta1                         -                           ERROR       UNKNOWN                   client old-agent x1, last 2026-10-10; not scanned live: the live scan did not read this resource
+policy/v1beta1                        PodDisruptionBudget         PASSING     OK                        -
+result not clean: 1 stale, 1 unknown

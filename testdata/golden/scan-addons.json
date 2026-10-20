@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "target": "1.38",
+  "target": "1.35",
   "cluster": {
     "context": "demo-ctx",
     "server": "api.example.test"
@@ -45,19 +45,6 @@
       "source": "k8s-lifecycle",
       "projected": false,
       "origin": "managedFields"
-    },
-    {
-      "kind": "LeaseCandidate",
-      "apiVersion": "coordination.k8s.io/v1beta1",
-      "namespace": "demo",
-      "name": "api",
-      "replacement": "",
-      "removedIn": "1.39",
-      "deprecatedIn": "1.36",
-      "severity": "WARNING",
-      "source": "k8s-lifecycle",
-      "projected": true,
-      "origin": "managedFields"
     }
   ],
   "skipped": [
@@ -67,8 +54,8 @@
       "reason": "503 Service Unavailable"
     },
     {
-      "group": "networking.k8s.io",
-      "kind": "Ingress",
+      "group": "batch",
+      "kind": "CronJob",
       "reason": "forbidden"
     }
   ],
@@ -98,7 +85,7 @@
       "minCompatible": "",
       "status": "UNKNOWN",
       "severity": "",
-      "reason": "no version of this add-on lists Kubernetes 1.32 as compatible",
+      "reason": "no version of this add-on lists Kubernetes 1.35 as compatible",
       "insightNote": ""
     }
   ],

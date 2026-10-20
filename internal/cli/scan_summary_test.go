@@ -37,7 +37,7 @@ func TestScanDeletedNodegroupLeavesStderrTraceAndNoRow(t *testing.T) {
 func TestScanStrictSummaryLineNamesTheCount(t *testing.T) {
 	api := &deprecationAWS{listErr: denied("ListInsights")} // one UNKNOWN insights row
 	code, _, se := insightScan(t, api, "--strict")
-	if code != 1 || !strings.HasSuffix(se, "tideclear: --strict: 1 stale/unknown items count as blockers\n") {
+	if code != 1 || !strings.HasSuffix(se, "tideclear: --strict: 1 stale/unknown item counts as a blocker\n") {
 		t.Fatalf("exit=%d stderr=%q", code, se)
 	}
 	code, _, se = insightScan(t, api)

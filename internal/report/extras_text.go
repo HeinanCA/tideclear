@@ -29,17 +29,20 @@ func extrasText(w io.Writer, ex Extras) error {
 			return err
 		}
 	}
-	return footer(w, ex.unknowns(), len(ex.Skipped))
+	return footer(w, ex.verdicts(reconcile.VerdictStale), ex.unknowns(), len(ex.Skipped))
 }
 
 // footer is the closing line: how much of the result is unproven.
-func footer(w io.Writer, unknown, skipped int) error {
+func footer(w io.Writer, stale, unknown, skipped int) error {
 	var parts []string
+	if stale > 0 {
+		parts = append(parts, fmt.Sprintf("%d stale", stale))
+	}
 	if unknown > 0 {
 		parts = append(parts, fmt.Sprintf("%d unknown", unknown))
 	}
 	if skipped > 0 {
-		parts = append(parts, fmt.Sprintf("%d checks skipped", skipped))
+		parts = append(parts, Plural(skipped, "check skipped", "checks skipped"))
 	}
 	if len(parts) == 0 {
 		return nil

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "target": "1.38",
+  "target": "1.35",
   "cluster": {
     "context": "demo-ctx",
     "server": "api.example.test"
@@ -45,19 +45,6 @@
       "source": "k8s-lifecycle",
       "projected": false,
       "origin": "managedFields"
-    },
-    {
-      "kind": "LeaseCandidate",
-      "apiVersion": "coordination.k8s.io/v1beta1",
-      "namespace": "demo",
-      "name": "api",
-      "replacement": "",
-      "removedIn": "1.39",
-      "deprecatedIn": "1.36",
-      "severity": "WARNING",
-      "source": "k8s-lifecycle",
-      "projected": true,
-      "origin": "managedFields"
     }
   ],
   "skipped": [
@@ -67,8 +54,8 @@
       "reason": "503 Service Unavailable"
     },
     {
-      "group": "networking.k8s.io",
-      "kind": "Ingress",
+      "group": "batch",
+      "kind": "CronJob",
       "reason": "forbidden"
     }
   ],
@@ -83,28 +70,28 @@
       "verdict": "BLOCKER",
       "clearsOn": null,
       "reason": "live objects use this API version",
-      "lastRefreshTime": null,
+      "lastRefreshTime": "2026-10-19T09:00:00Z",
       "objects": [
         {
           "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
           "kind": "FlowSchema",
           "namespace": "",
           "name": "web",
-          "origin": "managedFields"
+          "origin": "last-applied"
         }
       ],
       "clients": []
     },
     {
-      "usage": "/apis/networking.k8s.io/v1beta1/ingresses",
-      "apiVersion": "networking.k8s.io/v1beta1",
-      "kind": "Ingress",
-      "resource": "ingresses",
+      "usage": "/apis/apidiscovery.k8s.io/v2beta1/apigroupdiscoveries",
+      "apiVersion": "apidiscovery.k8s.io/v2beta1",
+      "kind": "APIGroupDiscovery",
+      "resource": "apigroupdiscoveries",
       "awsStatus": "ERROR",
       "verdict": "BLOCKER",
       "clearsOn": null,
       "reason": "a client still calls this API",
-      "lastRefreshTime": null,
+      "lastRefreshTime": "2026-10-19T09:00:00Z",
       "objects": [],
       "clients": [
         {
@@ -115,21 +102,21 @@
       ]
     },
     {
-      "usage": "/apis/apps/v1beta2/deployments",
-      "apiVersion": "apps/v1beta2",
-      "kind": "Deployment",
-      "resource": "deployments",
+      "usage": "/apis/flowcontrol.apiserver.k8s.io/v1beta3/prioritylevelconfigurations",
+      "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
+      "kind": "PriorityLevelConfiguration",
+      "resource": "prioritylevelconfigurations",
       "awsStatus": "WARNING",
       "verdict": "STALE",
-      "clearsOn": "2026-11-12T08:00:00Z",
-      "reason": "last call is older than 7 days",
-      "lastRefreshTime": null,
+      "clearsOn": "2026-11-09T08:00:00Z",
+      "reason": "last call is older than 7 days before the insight refreshed",
+      "lastRefreshTime": "2026-10-19T09:00:00Z",
       "objects": [],
       "clients": [
         {
           "userAgent": "kubectl/1.28",
           "requests": 3,
-          "lastRequestTime": "2026-10-13T08:00:00Z"
+          "lastRequestTime": "2026-10-10T08:00:00Z"
         }
       ]
     },
@@ -142,13 +129,13 @@
       "verdict": "UNKNOWN",
       "clearsOn": null,
       "reason": "not scanned live: the live scan did not read this resource",
-      "lastRefreshTime": null,
+      "lastRefreshTime": "2026-10-19T09:00:00Z",
       "objects": [],
       "clients": [
         {
           "userAgent": "old-agent",
           "requests": 1,
-          "lastRequestTime": "2026-10-13T08:00:00Z"
+          "lastRequestTime": "2026-10-10T08:00:00Z"
         }
       ]
     },
@@ -161,7 +148,7 @@
       "verdict": "OK",
       "clearsOn": null,
       "reason": "",
-      "lastRefreshTime": null,
+      "lastRefreshTime": "2026-10-19T09:00:00Z",
       "objects": [],
       "clients": []
     }
