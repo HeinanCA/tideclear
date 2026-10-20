@@ -278,6 +278,14 @@ func isAuthError(err error) bool {
 	}
 }
 
+// IsAccessDenied reports an IAM permission failure (an AccessDenied* code from
+// EKS itself). Credential-retrieval errors and bad-credential codes
+// (UnrecognizedClientException, InvalidClientTokenId) are not permission failures.
+func IsAccessDenied(err error) bool {
+	var ae smithy.APIError
+	return !isCredentialError(err) && errors.As(err, &ae) && strings.HasPrefix(ae.ErrorCode(), "AccessDenied")
+}
+
 // isCredentialError reports a failure to obtain credentials: the SDK nests an
 // operation error from another service (STS AssumeRole, SSO) under the EKS
 // call's own, so an AccessDenied there is not an EKS-region problem.

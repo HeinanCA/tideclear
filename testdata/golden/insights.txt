@@ -1,0 +1,4 @@
+NAME                  TARGET  STATUS   REFRESHED
+Deprecated API usage  1.32    ERROR    14h ago
+Add-on compatibility  1.32    PASSING  14h ago
+Kubelet version skew  1.32    UNKNOWN  -
