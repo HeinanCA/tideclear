@@ -89,6 +89,16 @@ func (f *fakeAPI) DescribeClusterVersions(_ context.Context, in *eks.DescribeClu
 	if f.err != nil {
 		return nil, f.err
 	}
+	// The real API rejects more than one of these filters in a single request.
+	filters := 0
+	for _, set := range []bool{in.DefaultOnly != nil, len(in.ClusterVersions) > 0, in.IncludeAll != nil, in.VersionStatus != ""} {
+		if set {
+			filters++
+		}
+	}
+	if filters > 1 {
+		return nil, &types.InvalidParameterException{Message: aws.String("Only one of the defaultOnly, clusterVersions, includeAll or status request parameters is accepted at a time.")}
+	}
 	start := 0
 	if in.NextToken != nil {
 		start, _ = strconv.Atoi(*in.NextToken)
@@ -459,5 +469,26 @@ func TestListClientConstructionErrorNotRegionPrefixed(t *testing.T) {
 	_, _, err := l.List(context.Background(), []string{"r1"}, "")
 	if err == nil || err.Error() != "load config: bad profile" {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestDaysUntilCountsCalendarDaysInUTC(t *testing.T) {
+	end := time.Date(2026, 12, 2, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		now  time.Time
+		want int
+	}{
+		{"morning of the same calendar span", time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC), 43},
+		{"midnight", time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC), 43},
+		{"late evening", time.Date(2026, 10, 20, 23, 59, 0, 0, time.UTC), 43},
+		{"end day itself", time.Date(2026, 12, 2, 15, 0, 0, 0, time.UTC), 0},
+		{"one day past, afternoon", time.Date(2026, 12, 3, 15, 0, 0, 0, time.UTC), -1},
+		{"non-UTC clock, same instant", time.Date(2026, 10, 20, 10, 0, 0, 0, time.FixedZone("UTC+2", 2*3600)), 43},
+	}
+	for _, tt := range tests {
+		if got := daysUntil(end, tt.now); got != tt.want {
+			t.Errorf("%s: daysUntil = %d, want %d", tt.name, got, tt.want)
+		}
 	}
 }
