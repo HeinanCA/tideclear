@@ -3,6 +3,7 @@
 package reconcile
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -62,17 +63,34 @@ func Unavailable(reason string) Row {
 	return Row{AWSStatus: string(insights.StatusUnknown), Verdict: VerdictUnknown, Reason: "insights unavailable: " + reason}
 }
 
+// deprecatedInsightPrefix starts the documented name of the deprecated-API insight.
+const deprecatedInsightPrefix = "Deprecated APIs removed in Kubernetes"
+
 // Reconcile returns one Row per deprecation detail of every insight. The
 // verdict follows the first matching rule: live objects, unusable insight,
 // PASSING, an active client, a stale client the scan could have seen, else UNKNOWN.
+// A non-PASSING deprecated-API insight with no details gets one UNKNOWN row, so
+// it is never reported as clean. Other insights produce no rows.
 func Reconcile(ins []insights.Insight, res apiscan.Result, now time.Time) []Row {
 	var rows []Row
 	for _, in := range ins {
 		for _, d := range in.Deprecations {
 			rows = append(rows, one(in, d, res, now))
 		}
+		if len(in.Deprecations) == 0 && in.Status != insights.StatusPassing && strings.HasPrefix(in.Name, deprecatedInsightPrefix) {
+			rows = append(rows, detailless(in))
+		}
 	}
 	return rows
+}
+
+func detailless(in insights.Insight) Row {
+	why := "no API details"
+	if in.DetailsUnavailable {
+		why = "details unavailable (no API details returned)"
+	}
+	return Row{AWSStatus: string(in.Status), Verdict: VerdictUnknown, LastRefresh: in.LastRefresh,
+		Reason: fmt.Sprintf("AWS reported %s with %s", in.Status, why)}
 }
 
 func one(in insights.Insight, d insights.Deprecation, res apiscan.Result, now time.Time) Row {
@@ -88,8 +106,8 @@ func one(in insights.Insight, d insights.Deprecation, res apiscan.Result, now ti
 	}
 	listed, hasListed := findListed(res.Listed, group, resource)
 	row.Kind = listed.Kind
-	for _, it := range res.Findings {
-		if o := it.Object; o.APIVersion == row.APIVersion && o.Resource == resource {
+	for _, o := range res.Live {
+		if o.APIVersion == row.APIVersion && o.Resource == resource {
 			row.Objects = append(row.Objects, o)
 			row.Kind = o.Kind
 		}
@@ -103,16 +121,21 @@ func one(in insights.Insight, d insights.Deprecation, res apiscan.Result, now ti
 	case in.Status == insights.StatusPassing:
 		row.Verdict, row.Clients = VerdictOK, nil
 	default:
-		clientVerdict(&row, hasListed, now)
+		clientVerdict(&row, listed, hasListed, in.LastRefresh, now)
 	}
 	return row
 }
 
-// clientVerdict applies rules 4 to 6 from the counted clients' call times.
-func clientVerdict(row *Row, hasListed bool, now time.Time) {
+// clientVerdict applies rules 4 to 6 from the counted clients' call times. A
+// client is active when it called within ActiveWindow of the insight's
+// LastRefresh (now when EKS gave none): the call times are as old as that refresh.
+func clientVerdict(row *Row, listed apiscan.Listed, hasListed bool, refresh, now time.Time) {
+	if refresh.IsZero() {
+		refresh = now
+	}
 	var newest *time.Time
 	for _, c := range row.Clients {
-		if c.LastRequest == nil || now.Sub(*c.LastRequest) <= ActiveWindow {
+		if c.LastRequest == nil || refresh.Sub(*c.LastRequest) <= ActiveWindow {
 			row.Verdict, row.Reason = VerdictBlocker, "a client still calls this API"
 			return
 		}
@@ -125,9 +148,11 @@ func clientVerdict(row *Row, hasListed bool, now time.Time) {
 		row.Verdict, row.Reason = VerdictUnknown, "no client call date to judge by"
 	case !hasListed:
 		row.Verdict, row.Reason = VerdictUnknown, "not scanned live: the live scan did not read this resource"
+	case listed.Unverified > 0:
+		row.Verdict, row.Reason = VerdictUnknown, fmt.Sprintf("%d objects of this resource had no apiVersion evidence", listed.Unverified)
 	default:
 		clears := newest.Add(AuditWindow)
-		row.Verdict, row.ClearsOn, row.Reason = VerdictStale, &clears, "last call is older than 7 days"
+		row.Verdict, row.ClearsOn, row.Reason = VerdictStale, &clears, "last call is older than 7 days before the insight refreshed"
 	}
 }
 

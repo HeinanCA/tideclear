@@ -159,7 +159,7 @@ func (c *clusterSource) readGroup(ctx context.Context, g metav1.APIGroup, wanted
 			case err == nil:
 				obs.Objects = append(obs.Objects, got...)
 				obs.Unverified += unverified
-				obs.Listed = append(obs.Listed, Listed{Group: g.Name, Resource: r.Name, Kind: r.Kind})
+				obs.Listed = append(obs.Listed, Listed{Group: g.Name, Resource: r.Name, Kind: r.Kind, Unverified: unverified})
 			case apierrors.IsForbidden(err):
 				obs.Skipped = append(obs.Skipped, Skipped{Group: g.Name, Kind: r.Kind, Reason: err.Error()})
 			default:

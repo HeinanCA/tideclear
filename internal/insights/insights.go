@@ -40,6 +40,9 @@ type Insight struct {
 	LastRefresh      time.Time // zero when EKS reported none
 	Deprecations     []Deprecation
 	AddonCompat      []AddonCompat
+	// DetailsUnavailable is set by Load when DescribeInsight returned no
+	// category summary, so the empty Deprecations means "unknown", not "none".
+	DetailsUnavailable bool
 }
 
 // Deprecation is one deprecated API the insight saw in use.
@@ -96,11 +99,13 @@ func Load(ctx context.Context, api API, cluster string, target *rules.Version) (
 		if err != nil {
 			return nil, fmt.Errorf("describe insight %s: %w", in.ID, err)
 		}
-		if d != nil && d.Insight != nil && d.Insight.CategorySpecificSummary != nil {
-			sum := d.Insight.CategorySpecificSummary
-			out[i].Deprecations = deprecations(sum.DeprecationDetails)
-			out[i].AddonCompat = addonCompat(sum.AddonCompatibilityDetails)
+		if d == nil || d.Insight == nil || d.Insight.CategorySpecificSummary == nil {
+			out[i].DetailsUnavailable = true
+			continue
 		}
+		sum := d.Insight.CategorySpecificSummary
+		out[i].Deprecations = deprecations(sum.DeprecationDetails)
+		out[i].AddonCompat = addonCompat(sum.AddonCompatibilityDetails)
 	}
 	return out, nil
 }

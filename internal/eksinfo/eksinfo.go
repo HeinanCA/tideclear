@@ -299,7 +299,8 @@ func IsCredentialFailure(err error) bool {
 	}
 	switch ae.ErrorCode() {
 	case "UnrecognizedClientException", "InvalidClientTokenId", "ExpiredToken", "ExpiredTokenException",
-		"RequestExpired", "InvalidSignatureException", "SignatureDoesNotMatch", "AuthFailure":
+		"RequestExpired", "InvalidSignatureException", "SignatureDoesNotMatch", "AuthFailure",
+		"IncompleteSignature", "MissingAuthenticationToken", "MissingAuthenticationTokenException":
 		return true
 	}
 	return false

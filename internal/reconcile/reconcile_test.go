@@ -20,10 +20,16 @@ const (
 // clearsFor is the expected clear-by date for a last call d ago: that call plus 30 days.
 func clearsFor(d time.Duration) *time.Time { t := now.Add(AuditWindow - d); return &t }
 
+// refreshAge is how long before now the test insights were refreshed.
+const refreshAge = time.Hour
+
+// beforeRefresh is a call time d before the insight's LastRefresh (not before now).
+func beforeRefresh(d time.Duration) *time.Time { return ago(refreshAge + d) }
+
 func ago(d time.Duration) *time.Time { t := now.Add(-d); return &t }
 
 func insight(st insights.Status, usage string, clients ...insights.Client) insights.Insight {
-	return insights.Insight{ID: "i1", Name: "Deprecated API usage", Status: st, LastRefresh: now.Add(-time.Hour),
+	return insights.Insight{ID: "i1", Name: "Deprecated API usage", Status: st, LastRefresh: now.Add(-refreshAge),
 		Deprecations: []insights.Deprecation{{Usage: usage, Clients: clients}}}
 }
 
@@ -40,6 +46,7 @@ func scanned(objs ...apiscan.Object) apiscan.Result {
 			{Group: "", Resource: "componentstatuses", Kind: "ComponentStatus"},
 		},
 		Findings: itemsOf(objs),
+		Live:     objs,
 	}
 }
 
@@ -69,8 +76,8 @@ func TestReconcileMatrix(t *testing.T) {
 		{"real_blocker_with_old_clients", insight(insights.StatusError, usageFS, client("kubectl", 3, ago(20*d))), scanned(fsObject), VerdictBlocker, nil, 1, 1, ""},
 		{"active_client_blocker", insight(insights.StatusError, usageFS, client("ctl/1.0", 3, ago(d))), scanned(), VerdictBlocker, nil, 0, 1, "still calls"},
 		{"active_client_resource_not_listed", insight(insights.StatusError, usageFS, client("ctl/1.0", 3, ago(d))), apiscan.Result{}, VerdictBlocker, nil, 0, 1, ""},
-		{"boundary_7d_exactly_is_blocker", insight(insights.StatusError, usageFS, client("ctl", 1, ago(ActiveWindow))), scanned(), VerdictBlocker, nil, 0, 1, ""},
-		{"boundary_7d_plus_1s_is_stale", insight(insights.StatusError, usageFS, client("ctl", 1, ago(ActiveWindow+time.Second))), scanned(), VerdictStale, clearsFor(ActiveWindow + time.Second), 0, 1, ""},
+		{"boundary_7d_exactly_is_blocker", insight(insights.StatusError, usageFS, client("ctl", 1, beforeRefresh(ActiveWindow))), scanned(), VerdictBlocker, nil, 0, 1, ""},
+		{"boundary_7d_plus_1s_is_stale", insight(insights.StatusError, usageFS, client("ctl", 1, beforeRefresh(ActiveWindow+time.Second))), scanned(), VerdictStale, clearsFor(refreshAge + ActiveWindow + time.Second), 0, 1, ""},
 		{"stale_clears_last_plus_30d", insight(insights.StatusWarning, usageFS, client("ctl", 5, ago(10*d))), scanned(), VerdictStale, clearsFor(10 * d), 0, 1, ""},
 		{"boundary_30d_exactly_clears_now", insight(insights.StatusWarning, usageFS, client("ctl", 5, ago(AuditWindow))), scanned(), VerdictStale, &now, 0, 1, ""},
 		{"boundary_30d_plus_1s_clears_in_past", insight(insights.StatusWarning, usageFS, client("ctl", 5, ago(AuditWindow+time.Second))), scanned(), VerdictStale, ago(time.Second), 0, 1, ""},
@@ -166,6 +173,91 @@ func TestParseUsage(t *testing.T) {
 		g, v, res, ok := ParseUsage(c.in)
 		if !reflect.DeepEqual([]any{g, v, res, ok}, []any{c.g, c.v, c.res, c.ok}) {
 			t.Errorf("ParseUsage(%q) = %q %q %q %v, want %q %q %q %v", c.in, g, v, res, ok, c.g, c.v, c.res, c.ok)
+		}
+	}
+}
+
+const deprecatedInsightName = "Deprecated APIs removed in Kubernetes v1.32"
+
+func TestRule1MatchesLiveObjectAtVersionWithNoBundledRule(t *testing.T) {
+	// The object is live but no rule matches it, so it is in Live and not in Findings.
+	res := scanned()
+	res.Live = []apiscan.Object{fsObject}
+	in := insight(insights.StatusError, usageFS, client("old", 1, ago(20*24*time.Hour)))
+	r := Reconcile([]insights.Insight{in}, res, now)[0]
+	if r.Verdict != VerdictBlocker || len(r.Objects) != 1 {
+		t.Fatalf("verdict = %s (%s) objects=%d, want BLOCKER with 1 object", r.Verdict, r.Reason, len(r.Objects))
+	}
+}
+
+func TestM1ActiveWindowIsMeasuredFromLastRefresh(t *testing.T) {
+	// Refreshed 3 days ago; last call 5 days before that (8d before now): 5d <= 7d, still live.
+	in := insight(insights.StatusError, usageFS, client("ctl", 1, ago(8*24*time.Hour)))
+	in.LastRefresh = now.Add(-3 * 24 * time.Hour)
+	r := Reconcile([]insights.Insight{in}, scanned(), now)[0]
+	if r.Verdict != VerdictBlocker {
+		t.Fatalf("verdict = %s (%s), want BLOCKER", r.Verdict, r.Reason)
+	}
+	in.Deprecations[0].Clients = []insights.Client{client("ctl", 1, ago(10*24*time.Hour+time.Second))}
+	if r := Reconcile([]insights.Insight{in}, scanned(), now)[0]; r.Verdict != VerdictStale {
+		t.Fatalf("7d+1s before refresh: verdict = %s (%s), want STALE", r.Verdict, r.Reason)
+	}
+}
+
+func TestM1ZeroLastRefreshFallsBackToNow(t *testing.T) {
+	in := insight(insights.StatusError, usageFS, client("ctl", 1, ago(ActiveWindow+time.Second)))
+	in.LastRefresh = time.Time{}
+	if r := Reconcile([]insights.Insight{in}, scanned(), now)[0]; r.Verdict != VerdictStale {
+		t.Fatalf("verdict = %s (%s), want STALE", r.Verdict, r.Reason)
+	}
+}
+
+func TestM1CallAfterRefreshIsActive(t *testing.T) {
+	in := insight(insights.StatusError, usageFS, client("ctl", 1, ago(time.Minute)))
+	in.LastRefresh = now.Add(-30 * 24 * time.Hour)
+	if r := Reconcile([]insights.Insight{in}, scanned(), now)[0]; r.Verdict != VerdictBlocker {
+		t.Fatalf("verdict = %s (%s), want BLOCKER", r.Verdict, r.Reason)
+	}
+}
+
+func TestM2UnverifiedObjectsTurnStaleIntoUnknown(t *testing.T) {
+	res := scanned()
+	res.Listed[0].Unverified = 3
+	in := insight(insights.StatusError, usageFS, client("ctl", 1, ago(10*24*time.Hour)))
+	r := Reconcile([]insights.Insight{in}, res, now)[0]
+	if r.Verdict != VerdictUnknown || r.ClearsOn != nil || !strings.Contains(r.Reason, "3 objects of this resource had no apiVersion evidence") {
+		t.Fatalf("row = %s %q clears=%v", r.Verdict, r.Reason, r.ClearsOn)
+	}
+	// An active client still blocks, and a PASSING insight is not downgraded.
+	active := insight(insights.StatusError, usageFS, client("ctl", 1, ago(time.Hour)))
+	if r := Reconcile([]insights.Insight{active}, res, now)[0]; r.Verdict != VerdictBlocker {
+		t.Fatalf("active: verdict = %s", r.Verdict)
+	}
+}
+
+func TestH2DetaillessDeprecatedAPIInsightIsUnknown(t *testing.T) {
+	for _, st := range []insights.Status{insights.StatusError, insights.StatusWarning, insights.StatusUnknown} {
+		in := insights.Insight{ID: "d", Name: deprecatedInsightName, Status: st, DetailsUnavailable: true, LastRefresh: now}
+		rows := Reconcile([]insights.Insight{in}, scanned(), now)
+		if len(rows) != 1 || rows[0].Verdict != VerdictUnknown || rows[0].AWSStatus != string(st) ||
+			!strings.Contains(rows[0].Reason, "details unavailable") || !strings.Contains(rows[0].Reason, string(st)) {
+			t.Fatalf("%s: rows = %+v", st, rows)
+		}
+	}
+	empty := insights.Insight{ID: "d", Name: deprecatedInsightName, Status: insights.StatusError}
+	if rows := Reconcile([]insights.Insight{empty}, scanned(), now); len(rows) != 1 || !strings.Contains(rows[0].Reason, "no API details") {
+		t.Fatalf("empty summary: rows = %+v", rows)
+	}
+}
+
+func TestH2OtherInsightsAndPassingProduceNoRow(t *testing.T) {
+	for _, in := range []insights.Insight{
+		{ID: "k", Name: "Kubelet version skew", Status: insights.StatusError, DetailsUnavailable: true},
+		{ID: "a", Name: "Add-on compatibility", Status: insights.StatusWarning},
+		{ID: "p", Name: deprecatedInsightName, Status: insights.StatusPassing, DetailsUnavailable: true},
+	} {
+		if rows := Reconcile([]insights.Insight{in}, scanned(), now); len(rows) != 0 {
+			t.Fatalf("%s: rows = %+v, want none", in.Name, rows)
 		}
 	}
 }
