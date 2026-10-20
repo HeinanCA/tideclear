@@ -2,6 +2,7 @@ package report
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 var (
 	current134 = rules.Version{Major: 1, Minor: 34}
 	target135  = rules.Version{Major: 1, Minor: 35}
+	target132  = rules.Version{Major: 1, Minor: 32}
 	sampleNow  = time.Date(2026, 10, 19, 22, 0, 0, 0, time.UTC)
 )
 
@@ -57,13 +59,6 @@ func w2Scan(t *testing.T) apiscan.Result {
 		Findings: []apiscan.ResultItem{
 			at("resource.k8s.io/v1beta1", "DeviceClass", "", "tideclear-probe", "managedFields", "deviceclasses"),
 			at("flowcontrol.apiserver.k8s.io/v1beta3", "FlowSchema", "", "web", "last-applied", "flowschemas"),
-			at("extensions/v1beta1", "Ingress", "demo", "web", "managedFields", "ingresses"),
-		},
-		Listed: []apiscan.Listed{
-			{Group: "flowcontrol.apiserver.k8s.io", Resource: "flowschemas", Kind: "FlowSchema"},
-			{Group: "flowcontrol.apiserver.k8s.io", Resource: "prioritylevelconfigurations", Kind: "PriorityLevelConfiguration"},
-			{Group: "apidiscovery.k8s.io", Resource: "apigroupdiscoveries", Kind: "APIGroupDiscovery"},
-			{Group: "policy", Resource: "poddisruptionbudgets", Kind: "PodDisruptionBudget"},
 		},
 		Skipped: []apiscan.Skipped{
 			{Group: "metrics.example.dev", Reason: "503 Service Unavailable"},
@@ -76,27 +71,62 @@ func w2Scan(t *testing.T) apiscan.Result {
 	return res
 }
 
-// insightsSample reconciles four deprecated-API insights against w2Scan.
+var (
+	insightRefresh = time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
+	insightRecent  = time.Date(2026, 10, 19, 9, 30, 0, 0, time.UTC)
+	insightOld     = time.Date(2026, 10, 10, 8, 0, 0, 0, time.UTC)
+)
+
+func removalInsight(id, target string, st insights.Status, usage string, cs ...insights.Client) insights.Insight {
+	return insights.Insight{ID: id, Name: "Deprecated APIs removed in Kubernetes v" + target, Target: target, Status: st, LastRefresh: insightRefresh,
+		Deprecations: []insights.Deprecation{{Usage: usage, Clients: cs}}}
+}
+
+// insightsSample is the 1.35 insight: the one API Kubernetes removes in 1.35
+// (apidiscovery v2beta1), still called by a recent client.
 func insightsSample(t *testing.T) Extras {
 	t.Helper()
-	old := time.Date(2026, 10, 10, 8, 0, 0, 0, time.UTC)
-	recent := time.Date(2026, 10, 19, 9, 30, 0, 0, time.UTC)
-	refresh := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
-	mk := func(id string, st insights.Status, usage string, cs ...insights.Client) insights.Insight {
-		return insights.Insight{ID: id, Name: "Deprecated APIs removed in Kubernetes v1.35", Target: "1.35", Status: st, LastRefresh: refresh,
-			Deprecations: []insights.Deprecation{{Usage: usage, Clients: cs}}}
-	}
 	ins := []insights.Insight{
-		mk("i1", insights.StatusError, "/apis/flowcontrol.apiserver.k8s.io/v1beta3/flowschemas"),
-		mk("i2", insights.StatusError, "/apis/apidiscovery.k8s.io/v2beta1/apigroupdiscoveries",
-			insights.Client{UserAgent: "demo-controller/1.2", Requests: 42, LastRequest: &recent}),
-		mk("i3", insights.StatusWarning, "/apis/flowcontrol.apiserver.k8s.io/v1beta3/prioritylevelconfigurations",
-			insights.Client{UserAgent: "kubectl/1.28", Requests: 3, LastRequest: &old}),
-		mk("i4", insights.StatusError, "/apis/batch/v1beta1/cronjobs",
-			insights.Client{UserAgent: "old-agent", Requests: 1, LastRequest: &old}),
-		mk("i5", insights.StatusPassing, "/apis/policy/v1beta1/poddisruptionbudgets"),
+		removalInsight("i1", "1.35", insights.StatusError, "/apis/apidiscovery.k8s.io/v2beta1/apigroupdiscoveries",
+			insights.Client{UserAgent: "demo-controller/1.2", Requests: 42, LastRequest: &insightRecent}),
 	}
 	return Extras{InsightsRan: true, Insights: reconcile.Reconcile(ins, w2Scan(t), sampleNow)}
+}
+
+// staleScan is the live scan behind scan-insights: a 1.31 cluster moving to
+// 1.32, where flowcontrol v1beta3 is removed.
+func staleScan(t *testing.T) apiscan.Result {
+	t.Helper()
+	set, err := rules.Load()
+	mustVerdict(t, err)
+	f, ok := set.Match("flowcontrol.apiserver.k8s.io/v1beta3", "FlowSchema", target132)
+	if !ok {
+		t.Fatal("no rule for FlowSchema v1beta3 at 1.32")
+	}
+	obj := apiscan.Object{APIVersion: "flowcontrol.apiserver.k8s.io/v1beta3", Kind: "FlowSchema", Name: "web", Origin: "last-applied", Resource: "flowschemas"}
+	return apiscan.Result{
+		Target:   target132,
+		Cluster:  apiscan.ClusterInfo{Context: "demo-ctx", Server: "api.example.test", EKSCluster: "demo-cluster"},
+		Findings: []apiscan.ResultItem{{Object: obj, Finding: f}},
+		Live:     []apiscan.Object{obj},
+		Listed: []apiscan.Listed{
+			{Group: "flowcontrol.apiserver.k8s.io", Resource: "flowschemas", Kind: "FlowSchema"},
+			{Group: "flowcontrol.apiserver.k8s.io", Resource: "prioritylevelconfigurations", Kind: "PriorityLevelConfiguration"},
+		},
+	}
+}
+
+// staleInsightsSample is the 1.32 insight: a BLOCKER backed by a live object
+// and a STALE row whose only caller (an old kubectl) last called over 7 days
+// before the insight refreshed.
+func staleInsightsSample(t *testing.T) Extras {
+	t.Helper()
+	ins := []insights.Insight{
+		removalInsight("i1", "1.32", insights.StatusError, "/apis/flowcontrol.apiserver.k8s.io/v1beta3/flowschemas"),
+		removalInsight("i2", "1.32", insights.StatusWarning, "/apis/flowcontrol.apiserver.k8s.io/v1beta3/prioritylevelconfigurations",
+			insights.Client{UserAgent: "kubectl/1.28", Requests: 3, LastRequest: &insightOld}),
+	}
+	return Extras{InsightsRan: true, Insights: reconcile.Reconcile(ins, staleScan(t), sampleNow)}
 }
 
 type fakeAddonAPI struct {
@@ -175,4 +205,43 @@ func nodesSample(t *testing.T) Extras {
 	nodeRows, err := nodes.CheckNodes(ctx, dyn, current134, target135, nr, true, judged)
 	mustVerdict(t, err)
 	return Extras{Nodes: append(groupRows, nodeRows...)}
+}
+
+// removedAt reports whether the rules data says apiVersion is removed in target.
+// The row may carry no Kind (the scan never listed the resource), so every kind
+// of the group is tried.
+func removedAt(set *rules.Set, apiVersion string, target rules.Version) bool {
+	group, _, _ := strings.Cut(apiVersion, "/")
+	for _, gk := range set.Kinds() {
+		if gk.Group != group {
+			continue
+		}
+		if f, ok := set.Match(apiVersion, gk.Kind, target); ok && f.Rule.RemovedIn != nil && *f.Rule.RemovedIn == target {
+			return true
+		}
+	}
+	return false
+}
+
+// TestSampleInsightRowsAreRemovedAtTheirTarget keeps the samples honest: a
+// "removed in vX" insight can only list APIs that the rules data removes in X.
+func TestSampleInsightRowsAreRemovedAtTheirTarget(t *testing.T) {
+	set, err := rules.Load()
+	mustVerdict(t, err)
+	for name, c := range map[string]struct {
+		target rules.Version
+		ex     Extras
+	}{
+		"1.34 to 1.35 (full)":     {target135, insightsSample(t)},
+		"1.31 to 1.32 (insights)": {target132, staleInsightsSample(t)},
+	} {
+		if len(c.ex.Insights) == 0 {
+			t.Errorf("%s: no insight rows", name)
+		}
+		for _, r := range c.ex.Insights {
+			if !removedAt(set, r.APIVersion, c.target) {
+				t.Errorf("%s: %s is not removed in %s per the rules data", name, r.APIVersion, c.target)
+			}
+		}
+	}
 }

@@ -1,25 +1,12 @@
 {
   "schemaVersion": 1,
-  "target": "1.35",
+  "target": "1.32",
   "cluster": {
     "context": "demo-ctx",
     "server": "api.example.test"
   },
   "eksCluster": "demo-cluster",
   "findings": [
-    {
-      "kind": "DeviceClass",
-      "apiVersion": "resource.k8s.io/v1beta1",
-      "namespace": "",
-      "name": "tideclear-probe",
-      "replacement": "resource.k8s.io/v1",
-      "removedIn": "1.38",
-      "deprecatedIn": "1.35",
-      "severity": "WARNING",
-      "source": "k8s-lifecycle",
-      "projected": true,
-      "origin": "managedFields"
-    },
     {
       "kind": "FlowSchema",
       "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
@@ -32,34 +19,10 @@
       "source": "k8s-lifecycle",
       "projected": false,
       "origin": "last-applied"
-    },
-    {
-      "kind": "Ingress",
-      "apiVersion": "extensions/v1beta1",
-      "namespace": "demo",
-      "name": "web",
-      "replacement": "networking.k8s.io/v1",
-      "removedIn": "1.22",
-      "deprecatedIn": "1.14",
-      "severity": "BLOCKER",
-      "source": "k8s-lifecycle",
-      "projected": false,
-      "origin": "managedFields"
     }
   ],
-  "skipped": [
-    {
-      "group": "metrics.example.dev",
-      "kind": "",
-      "reason": "503 Service Unavailable"
-    },
-    {
-      "group": "batch",
-      "kind": "CronJob",
-      "reason": "forbidden"
-    }
-  ],
-  "unverified": 3,
+  "skipped": [],
+  "unverified": 0,
   "insights": [
     {
       "usage": "/apis/flowcontrol.apiserver.k8s.io/v1beta3/flowschemas",
@@ -83,25 +46,6 @@
       "clients": []
     },
     {
-      "usage": "/apis/apidiscovery.k8s.io/v2beta1/apigroupdiscoveries",
-      "apiVersion": "apidiscovery.k8s.io/v2beta1",
-      "kind": "APIGroupDiscovery",
-      "resource": "apigroupdiscoveries",
-      "awsStatus": "ERROR",
-      "verdict": "BLOCKER",
-      "clearsOn": null,
-      "reason": "a client still calls this API",
-      "lastRefreshTime": "2026-10-19T09:00:00Z",
-      "objects": [],
-      "clients": [
-        {
-          "userAgent": "demo-controller/1.2",
-          "requests": 42,
-          "lastRequestTime": "2026-10-19T09:30:00Z"
-        }
-      ]
-    },
-    {
       "usage": "/apis/flowcontrol.apiserver.k8s.io/v1beta3/prioritylevelconfigurations",
       "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
       "kind": "PriorityLevelConfiguration",
@@ -119,38 +63,6 @@
           "lastRequestTime": "2026-10-10T08:00:00Z"
         }
       ]
-    },
-    {
-      "usage": "/apis/batch/v1beta1/cronjobs",
-      "apiVersion": "batch/v1beta1",
-      "kind": "",
-      "resource": "cronjobs",
-      "awsStatus": "ERROR",
-      "verdict": "UNKNOWN",
-      "clearsOn": null,
-      "reason": "not scanned live: the live scan did not read this resource",
-      "lastRefreshTime": "2026-10-19T09:00:00Z",
-      "objects": [],
-      "clients": [
-        {
-          "userAgent": "old-agent",
-          "requests": 1,
-          "lastRequestTime": "2026-10-10T08:00:00Z"
-        }
-      ]
-    },
-    {
-      "usage": "/apis/policy/v1beta1/poddisruptionbudgets",
-      "apiVersion": "policy/v1beta1",
-      "kind": "PodDisruptionBudget",
-      "resource": "poddisruptionbudgets",
-      "awsStatus": "PASSING",
-      "verdict": "OK",
-      "clearsOn": null,
-      "reason": "",
-      "lastRefreshTime": "2026-10-19T09:00:00Z",
-      "objects": [],
-      "clients": []
     }
   ],
   "checksSkipped": [

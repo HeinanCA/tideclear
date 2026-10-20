@@ -32,19 +32,6 @@
       "source": "k8s-lifecycle",
       "projected": false,
       "origin": "last-applied"
-    },
-    {
-      "kind": "Ingress",
-      "apiVersion": "extensions/v1beta1",
-      "namespace": "demo",
-      "name": "web",
-      "replacement": "networking.k8s.io/v1",
-      "removedIn": "1.22",
-      "deprecatedIn": "1.14",
-      "severity": "BLOCKER",
-      "source": "k8s-lifecycle",
-      "projected": false,
-      "origin": "managedFields"
     }
   ],
   "skipped": [

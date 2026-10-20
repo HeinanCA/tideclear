@@ -7,12 +7,11 @@ import (
 	"testing"
 
 	"github.com/HeinanCA/tideclear/internal/apiscan"
-	"github.com/HeinanCA/tideclear/internal/reconcile"
 )
 
 func TestScanTextInsightsGolden(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanText(&b, w2Scan(t), insightsSample(t)); err != nil {
+	if err := ScanText(&b, staleScan(t), staleInsightsSample(t)); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan-insights.txt", b.Bytes())
@@ -20,9 +19,9 @@ func TestScanTextInsightsGolden(t *testing.T) {
 
 func TestScanJSONInsightsGolden(t *testing.T) {
 	var b bytes.Buffer
-	ex := insightsSample(t)
+	ex := staleInsightsSample(t)
 	ex.Skipped = []CheckSkipped{{Check: "insights", Reason: "access denied"}}
-	if err := ScanJSON(&b, w2Scan(t), ex); err != nil {
+	if err := ScanJSON(&b, staleScan(t), ex); err != nil {
 		t.Fatal(err)
 	}
 	golden(t, "scan-insights.json", b.Bytes())
@@ -30,7 +29,7 @@ func TestScanJSONInsightsGolden(t *testing.T) {
 
 func TestScanTextStaleRendersClearDate(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanText(&b, apiscan.Result{Target: target135}, insightsSample(t)); err != nil {
+	if err := ScanText(&b, apiscan.Result{Target: target132}, staleInsightsSample(t)); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), "STALE, clears 2026-11-09") {
@@ -38,18 +37,18 @@ func TestScanTextStaleRendersClearDate(t *testing.T) {
 	}
 }
 
-func TestScanTextUnknownFooter(t *testing.T) {
+func TestScanTextStaleFooter(t *testing.T) {
 	var b bytes.Buffer
-	if err := ScanText(&b, apiscan.Result{Target: target135}, insightsSample(t)); err != nil {
+	if err := ScanText(&b, apiscan.Result{Target: target132}, staleInsightsSample(t)); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(b.String(), "result not clean: 1 stale, 1 unknown\n") {
+	if !strings.HasSuffix(b.String(), "result not clean: 1 stale\n") {
 		t.Fatalf("footer missing or not last:\n%s", b.String())
 	}
 	b.Reset()
-	ex := insightsSample(t)
-	ex.Insights = []reconcile.Row{ex.Insights[0], ex.Insights[1], ex.Insights[4]} // BLOCKER, BLOCKER, OK
-	if err := ScanText(&b, apiscan.Result{Target: target135}, ex); err != nil {
+	ex := staleInsightsSample(t)
+	ex.Insights = ex.Insights[:1] // the BLOCKER row only
+	if err := ScanText(&b, apiscan.Result{Target: target132}, ex); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(b.String(), "result not clean") {

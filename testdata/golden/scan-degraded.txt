@@ -2,7 +2,6 @@ cluster: demo-ctx (api.example.test) [EKS: demo-cluster]
 KIND         APIVERSION                            NAMESPACE  NAME             REPLACEMENT                      REMOVED IN        SEVERITY
 DeviceClass  resource.k8s.io/v1beta1               -          tideclear-probe  resource.k8s.io/v1               1.38 (projected)  WARNING
 FlowSchema   flowcontrol.apiserver.k8s.io/v1beta3  -          web              flowcontrol.apiserver.k8s.io/v1  1.32              BLOCKER
-Ingress      extensions/v1beta1                    demo       web              networking.k8s.io/v1             1.22              BLOCKER
 warning: 2 groups/kinds skipped (see stderr); results are partial
 3 objects had no apiVersion evidence and were not checked
 
