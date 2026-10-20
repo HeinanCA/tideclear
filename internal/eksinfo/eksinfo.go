@@ -188,16 +188,15 @@ func clusterVersions(ctx context.Context, api EKSAPI, name string) ([]named, err
 // versionInfo fetches support data for the versions in use, keyed by version.
 func versionInfo(ctx context.Context, api EKSAPI, cs []named) (map[string]types.ClusterVersionInformation, error) {
 	inUse := map[string]bool{}
-	var list []string
 	for _, c := range cs {
-		if c.version != "" && !inUse[c.version] {
+		if c.version != "" {
 			inUse[c.version] = true
-			list = append(list, c.version)
 		}
 	}
+	// The API accepts only one of defaultOnly, clusterVersions, includeAll or status.
+	// includeAll also returns unsupported versions; filter to the ones in use below.
 	p := eks.NewDescribeClusterVersionsPaginator(api, &eks.DescribeClusterVersionsInput{
-		ClusterVersions: list,
-		IncludeAll:      aws.Bool(true),
+		IncludeAll: aws.Bool(true),
 	})
 	info := map[string]types.ClusterVersionInformation{}
 	for p.HasMorePages() {

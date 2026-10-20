@@ -89,6 +89,16 @@ func (f *fakeAPI) DescribeClusterVersions(_ context.Context, in *eks.DescribeClu
 	if f.err != nil {
 		return nil, f.err
 	}
+	// The real API rejects more than one of these filters in a single request.
+	filters := 0
+	for _, set := range []bool{in.DefaultOnly != nil, len(in.ClusterVersions) > 0, in.IncludeAll != nil, in.VersionStatus != ""} {
+		if set {
+			filters++
+		}
+	}
+	if filters > 1 {
+		return nil, &types.InvalidParameterException{Message: aws.String("Only one of the defaultOnly, clusterVersions, includeAll or status request parameters is accepted at a time.")}
+	}
 	start := 0
 	if in.NextToken != nil {
 		start, _ = strconv.Atoi(*in.NextToken)
