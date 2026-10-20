@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "target": "1.38",
+  "cluster": {
+    "context": "demo-ctx",
+    "server": "api.example.test"
+  },
+  "eksCluster": "demo-cluster",
+  "findings": [
+    {
+      "kind": "DeviceClass",
+      "apiVersion": "resource.k8s.io/v1beta1",
+      "namespace": "",
+      "name": "tideclear-probe",
+      "replacement": "resource.k8s.io/v1",
+      "removedIn": "1.38",
+      "deprecatedIn": "1.35",
+      "severity": "WARNING",
+      "source": "k8s-lifecycle",
+      "projected": true,
+      "origin": "managedFields"
+    },
+    {
+      "kind": "FlowSchema",
+      "apiVersion": "flowcontrol.apiserver.k8s.io/v1beta3",
+      "namespace": "",
+      "name": "web",
+      "replacement": "flowcontrol.apiserver.k8s.io/v1",
+      "removedIn": "1.32",
+      "deprecatedIn": "1.29",
+      "severity": "BLOCKER",
+      "source": "k8s-lifecycle",
+      "projected": false,
+      "origin": "last-applied"
+    },
+    {
+      "kind": "Ingress",
+      "apiVersion": "extensions/v1beta1",
+      "namespace": "demo",
+      "name": "web",
+      "replacement": "networking.k8s.io/v1",
+      "removedIn": "1.22",
+      "deprecatedIn": "1.14",
+      "severity": "BLOCKER",
+      "source": "k8s-lifecycle",
+      "projected": false,
+      "origin": "managedFields"
+    },
+    {
+      "kind": "LeaseCandidate",
+      "apiVersion": "coordination.k8s.io/v1beta1",
+      "namespace": "demo",
+      "name": "api",
+      "replacement": "",
+      "removedIn": "1.39",
+      "deprecatedIn": "1.36",
+      "severity": "WARNING",
+      "source": "k8s-lifecycle",
+      "projected": true,
+      "origin": "managedFields"
+    }
+  ],
+  "skipped": [
+    {
+      "group": "metrics.example.dev",
+      "kind": "",
+      "reason": "503 Service Unavailable"
+    },
+    {
+      "group": "networking.k8s.io",
+      "kind": "Ingress",
+      "reason": "forbidden"
+    }
+  ],
+  "unverified": 3
+}

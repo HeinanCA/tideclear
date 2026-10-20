@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "target": "1.38",
+  "path": "deploy/manifests",
+  "findings": [
+    {
+      "kind": "Ingress",
+      "apiVersion": "extensions/v1beta1",
+      "namespace": "demo",
+      "name": "web",
+      "replacement": "networking.k8s.io/v1",
+      "removedIn": "1.22",
+      "deprecatedIn": "1.14",
+      "severity": "BLOCKER",
+      "source": "k8s-lifecycle",
+      "projected": false,
+      "origin": "web/ingress.yaml:1"
+    }
+  ],
+  "skipped": [
+    {
+      "group": "web/broken.yaml",
+      "kind": "",
+      "reason": "malformed YAML: line 5"
+    }
+  ],
+  "unverified": 0,
+  "filesScanned": 4
+}

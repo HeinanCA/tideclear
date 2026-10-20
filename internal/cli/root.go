@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
+	"github.com/HeinanCA/tideclear/internal/eksinfo"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
 )
 
 // ErrBlockers signals that a scan found removed-API blockers (exit 1).
@@ -39,7 +43,23 @@ func exitCode(err error) int {
 	}
 }
 
-func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
+// Deps holds the external adapters commands use; tests substitute fakes.
+type Deps struct {
+	// EKS builds an EKS client for a profile and region ("" = default chain).
+	EKS func(profile, region string) (eksinfo.EKSAPI, error)
+	// DefaultRegion resolves the region the default chain would use.
+	DefaultRegion func(profile string) (string, error)
+	// Now is the clock; nil means time.Now.
+	Now func() time.Time
+	// Kube builds Kubernetes clients for a kubeconfig path and context
+	// ("" = default loading rules and current context).
+	Kube func(kubeconfig, kubeContext string) (discovery.DiscoveryInterface, dynamic.Interface, error)
+	// KubeIdentity names the kube context and API server host a Kube call
+	// would use; nil or "" means unknown.
+	KubeIdentity func(kubeconfig, kubeContext string) (name, server string)
+}
+
+func newRootCmd(deps Deps, stdout, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "tideclear",
 		Short:         "tideclear: read-only EKS upgrade readiness checks",
@@ -51,20 +71,26 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)
+	root.AddCommand(newClustersCmd(deps))
+	root.AddCommand(newScanCmd(deps))
 	return root
 }
 
 // Run executes the CLI and returns the process exit code. A failure prints
 // exactly one line to stderr; ErrBlockers prints nothing (the report does).
 func Run(args []string, stdout, stderr io.Writer) int {
-	root := newRootCmd(stdout, stderr)
+	return runDeps(realDeps(), args, stdout, stderr)
+}
+
+func runDeps(deps Deps, args []string, stdout, stderr io.Writer) int {
+	root := newRootCmd(deps, stdout, stderr)
 	root.SetArgs(args)
 	return execute(root, stderr)
 }
 
 // runCmd runs a root whose RunE is fn (test seam for error/panic paths).
 func runCmd(fn func() error, stdout, stderr io.Writer) int {
-	root := newRootCmd(stdout, stderr)
+	root := newRootCmd(Deps{}, stdout, stderr)
 	root.RunE = func(*cobra.Command, []string) error { return fn() }
 	root.SetArgs(nil)
 	return execute(root, stderr)

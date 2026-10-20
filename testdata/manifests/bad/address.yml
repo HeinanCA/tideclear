@@ -1,0 +1,9 @@
+apiVersion: networking.k8s.io/v1beta1
+kind: IPAddress
+metadata:
+  name: 192.0.2.10
+spec:
+  parentRef:
+    resource: services
+    name: api
+    namespace: demo

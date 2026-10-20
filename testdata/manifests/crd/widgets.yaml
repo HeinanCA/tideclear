@@ -1,0 +1,13 @@
+apiVersion: example.test/v1
+kind: Widget
+metadata:
+  name: web
+  namespace: demo
+spec:
+  size: 1
+---
+apiVersion: example.test/v1alpha1
+kind: Gadget
+metadata:
+  name: api
+  namespace: demo

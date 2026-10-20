@@ -1,0 +1,5 @@
+CLUSTER  REGION     VERSION  STANDARD END  EXTENDED END  DAYS LEFT  SUPPORT
+demo-a   us-east-1  1.35     2027-03-27    2028-03-27    159        standard
+demo-b   eu-west-1  1.31     2025-11-26    2026-11-26    38         EXTENDED
+demo-c   eu-west-1  1.25     2024-05-01    2025-05-01    -536       UNSUPPORTED
+demo-d   eu-west-1  9.99     -             -             -          unknown
