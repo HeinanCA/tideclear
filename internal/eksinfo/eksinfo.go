@@ -226,7 +226,7 @@ func buildCluster(c named, region string, v types.ClusterVersionInformation, fou
 		end = std
 	}
 	if !end.IsZero() {
-		d := int(end.Sub(now) / (24 * time.Hour))
+		d := daysUntil(end, now)
 		out.DaysLeft = &d
 	}
 	out.OnExtended = out.Support == SupportExtended
@@ -289,4 +289,13 @@ func isCredentialError(err error) bool {
 		}
 	}
 	return false
+}
+
+// daysUntil counts calendar days in UTC from now to end; negative once end has passed.
+func daysUntil(end, now time.Time) int {
+	day := func(t time.Time) time.Time {
+		u := t.UTC()
+		return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
+	}
+	return int(day(end).Sub(day(now)) / (24 * time.Hour))
 }
