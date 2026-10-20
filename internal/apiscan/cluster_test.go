@@ -335,7 +335,7 @@ func TestServerVersionUnreachableIsError(t *testing.T) {
 func TestListedRecordsOnlyKindsReadInFull(t *testing.T) {
 	disc, dyn := ingressCluster(ingress("web", ""))
 	res := scan(t, disc, dyn, ver(1, 31))
-	want := []Listed{{Group: "networking.k8s.io", Resource: "ingresses", Kind: "Ingress"}}
+	want := []Listed{{Group: "networking.k8s.io", Resource: "ingresses", Kind: "Ingress", Unverified: 1}}
 	if !reflect.DeepEqual(res.Listed, want) {
 		t.Fatalf("Listed = %+v, want %+v", res.Listed, want)
 	}

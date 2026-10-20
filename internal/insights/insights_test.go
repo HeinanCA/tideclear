@@ -221,6 +221,18 @@ func TestLoadDescribesEachInsight(t *testing.T) {
 	}
 }
 
+func TestLoadMarksInsightsWithoutDetails(t *testing.T) {
+	api := twoPages()
+	api.details = map[string]*types.Insight{"i1": documentedDetail()}
+	got, err := Load(context.Background(), api, "demo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].DetailsUnavailable || !got[1].DetailsUnavailable {
+		t.Fatalf("DetailsUnavailable i1=%v i2=%v, want false and true", got[0].DetailsUnavailable, got[1].DetailsUnavailable)
+	}
+}
+
 func TestLoadDescribeError(t *testing.T) {
 	boom := errors.New("describe failed")
 	api := twoPages()

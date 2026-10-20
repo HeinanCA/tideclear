@@ -32,22 +32,34 @@ type deprecationAWS struct {
 	clients     []types.ClientStat
 	listErr     error
 	describeErr error
+	name        string // insight name; default "Deprecated API usage"
+	noSummary   bool   // DescribeInsight returns no category summary
 }
 
 func (f *deprecationAWS) ListInsights(context.Context, *eks.ListInsightsInput, ...func(*eks.Options)) (*eks.ListInsightsOutput, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
-	return &eks.ListInsightsOutput{Insights: []types.InsightSummary{insightSummary("i1", "Deprecated API usage", f.status, fixedNow.Add(-time.Hour))}}, nil
+	return &eks.ListInsightsOutput{Insights: []types.InsightSummary{insightSummary("i1", f.insightName(), f.status, fixedNow.Add(-time.Hour))}}, nil
 }
 
 func (f *deprecationAWS) DescribeInsight(context.Context, *eks.DescribeInsightInput, ...func(*eks.Options)) (*eks.DescribeInsightOutput, error) {
 	if f.describeErr != nil {
 		return nil, f.describeErr
 	}
+	if f.noSummary {
+		return &eks.DescribeInsightOutput{Insight: &types.Insight{}}, nil
+	}
 	return &eks.DescribeInsightOutput{Insight: &types.Insight{CategorySpecificSummary: &types.InsightCategorySpecificSummary{
 		DeprecationDetails: []types.DeprecationDetail{{Usage: aws.String(usageFlowSchema), ClientStats: f.clients}},
 	}}}, nil
+}
+
+func (f *deprecationAWS) insightName() string {
+	if f.name != "" {
+		return f.name
+	}
+	return "Deprecated API usage"
 }
 
 func callAt(ua string, n int32, ago time.Duration) types.ClientStat {
@@ -233,5 +245,24 @@ func TestScanWithoutInsightsNeverCallsEKSInsights(t *testing.T) {
 	}
 	if code, _, se := run(t, d, "scan", "--cluster", "demo-cluster"); code != 0 {
 		t.Fatalf("exit=%d stderr=%q", code, se)
+	}
+}
+
+func TestScanInsightsDetaillessDeprecatedAPIInsightIsUnknown(t *testing.T) {
+	api := &deprecationAWS{status: types.InsightStatusValueError, name: "Deprecated APIs removed in Kubernetes v1.32", noSummary: true}
+	code, out, _ := insightScan(t, api)
+	if code != 0 || !strings.Contains(out, "result not clean: 1 unknown") || strings.Contains(out, "no deprecated API usage reported") {
+		t.Fatalf("exit=%d stdout:\n%s", code, out)
+	}
+	if code, _, _ := insightScan(t, api, "--strict"); code != 1 {
+		t.Fatalf("--strict exit = %d, want 1", code)
+	}
+}
+
+func TestScanInsightsOtherDetaillessInsightIsNotARow(t *testing.T) {
+	api := &deprecationAWS{status: types.InsightStatusValueError, name: "Kubelet version skew", noSummary: true}
+	code, out, _ := insightScan(t, api, "--strict")
+	if code != 0 || strings.Contains(out, "result not clean") {
+		t.Fatalf("exit=%d stdout:\n%s", code, out)
 	}
 }
