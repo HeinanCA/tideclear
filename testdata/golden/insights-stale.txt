@@ -1,5 +1,5 @@
-NAME                  TARGET  STATUS   REFRESHED
-Deprecated API usage  1.32    ERROR    30h ago
-Add-on compatibility  1.32    PASSING  30h ago
-Kubelet version skew  1.32    UNKNOWN  -
+NAME                                         TARGET  STATUS   REFRESHED
+Deprecated APIs removed in Kubernetes v1.32  1.32    ERROR    30h ago
+EKS add-on version compatibility             1.32    PASSING  30h ago
+Kubelet version skew                         1.32    UNKNOWN  -
 hint: some insights were refreshed more than 24h ago; use the console "Refresh insights" button for current data

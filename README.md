@@ -61,10 +61,10 @@ Show the EKS Upgrade Insights for one cluster (sample output):
 
 ```console
 $ tideclear insights --cluster demo-cluster
-NAME                  TARGET  STATUS   REFRESHED
-Deprecated API usage  1.32    ERROR    14h ago
-Add-on compatibility  1.32    PASSING  14h ago
-Kubelet version skew  1.32    UNKNOWN  -
+NAME                                         TARGET  STATUS   REFRESHED
+Deprecated APIs removed in Kubernetes v1.32  1.32    ERROR    14h ago
+EKS add-on version compatibility             1.32    PASSING  14h ago
+Kubelet version skew                         1.32    UNKNOWN  -
 ```
 
 Reconcile those insights with a live scan. `--insights` needs `--cluster` and a live scan
@@ -151,9 +151,11 @@ An `UNKNOWN` row is never treated as clean and never called a stale ghost. See
 | 1 | At least one blocker: an object uses an API removed at or before the target, a client still calls a removed API, or an Amazon Linux 2 node cannot follow the control plane. With `--strict`, also a STALE or UNKNOWN insight row, or an UNKNOWN add-on. |
 | 2 | Tool, credential or connection error. One line on stderr. |
 
-An incompatible add-on is a `WARNING`. A skipped check never makes `--strict` exit 1. Expired or
-invalid credentials, including an expired SSO session, exit 2.
-With `--strict`, a line on stderr says how many STALE or UNKNOWN items turned the exit into 1.
+An incompatible add-on is a `WARNING`. A skipped add-on, nodegroup or node check never makes
+`--strict` exit 1. If insights cannot be read, the insights check is skipped and leaves an UNKNOWN
+insight row, which `--strict` counts. Expired or invalid credentials, including an expired SSO
+session, exit 2. With `--strict`, a line on stderr says how many STALE or UNKNOWN items turned
+the exit into 1.
 
 `clusters` exits 0 on success even when a cluster is on extended support; the state is shown,
 not treated as an error.
@@ -266,10 +268,14 @@ Kubernetes (only for a live `scan`): `get` and `list` on the resources being che
 discovery. A kind that returns 403 is skipped and reported, not fatal. The node check also needs
 `list` on `nodes`, which is cluster-scoped. The built-in `view` ClusterRole does not grant it.
 
-If a call is denied, the check degrades: tideclear prints one line on stderr that names the
-check, lists it in `checksSkipped[]`, and still prints the rest of the report. The `insights`
-command is the exception: any AWS error there exits 2. Without `--cluster`, the add-on and
-nodegroup checks are skipped, and the report says so.
+If a call is denied, the check degrades. A denied `ListInsights`, `DescribeInsight`,
+`ListAddons`, `ListNodegroups`, `DescribeNodegroup` or node list skips that check: tideclear
+prints one line on stderr that names the check, lists it in `checksSkipped[]`, and still prints
+the rest of the report. A denied or failed `DescribeAddon` or `DescribeAddonVersions` marks that
+one add-on `UNKNOWN`, with the reason in the `NOTE` column, and the check still runs. A
+Kubernetes 401 on the node list exits 2. The `insights` command is the exception: any AWS error
+there exits 2. Without `--cluster`, the add-on and nodegroup checks are skipped, and the report
+says so.
 
 ## How detection works
 

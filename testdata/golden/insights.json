@@ -3,7 +3,7 @@
   "insights": [
     {
       "id": "i1",
-      "name": "Deprecated API usage",
+      "name": "Deprecated APIs removed in Kubernetes v1.32",
       "target": "1.32",
       "status": "ERROR",
       "reason": "deprecated APIs in use",
@@ -11,7 +11,7 @@
     },
     {
       "id": "i2",
-      "name": "Add-on compatibility",
+      "name": "EKS add-on version compatibility",
       "target": "1.32",
       "status": "PASSING",
       "reason": "",

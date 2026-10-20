@@ -29,7 +29,7 @@ func beforeRefresh(d time.Duration) *time.Time { return ago(refreshAge + d) }
 func ago(d time.Duration) *time.Time { t := now.Add(-d); return &t }
 
 func insight(st insights.Status, usage string, clients ...insights.Client) insights.Insight {
-	return insights.Insight{ID: "i1", Name: "Deprecated API usage", Status: st, LastRefresh: now.Add(-refreshAge),
+	return insights.Insight{ID: "i1", Name: "Deprecated APIs removed in Kubernetes v1.32", Status: st, LastRefresh: now.Add(-refreshAge),
 		Deprecations: []insights.Deprecation{{Usage: usage, Clients: clients}}}
 }
 
@@ -137,7 +137,7 @@ func TestReconcileRowFields(t *testing.T) {
 }
 
 func TestReconcileNoDeprecationsNoRows(t *testing.T) {
-	in := insights.Insight{ID: "x", Name: "Add-on compatibility", Status: insights.StatusPassing}
+	in := insights.Insight{ID: "x", Name: "EKS add-on version compatibility", Status: insights.StatusPassing}
 	if rows := Reconcile([]insights.Insight{in}, scanned(), now); len(rows) != 0 {
 		t.Fatalf("rows = %+v, want none", rows)
 	}
@@ -334,7 +334,7 @@ func TestH2DetaillessDeprecatedAPIInsightIsUnknown(t *testing.T) {
 func TestH2OtherInsightsAndPassingProduceNoRow(t *testing.T) {
 	for _, in := range []insights.Insight{
 		{ID: "k", Name: "Kubelet version skew", Status: insights.StatusError, DetailsUnavailable: true},
-		{ID: "a", Name: "Add-on compatibility", Status: insights.StatusWarning},
+		{ID: "a", Name: "EKS add-on version compatibility", Status: insights.StatusWarning},
 		{ID: "p", Name: deprecatedInsightName, Status: insights.StatusPassing, DetailsUnavailable: true, LastRefresh: now.Add(-time.Hour)},
 	} {
 		if rows := Reconcile([]insights.Insight{in}, scanned(), now); len(rows) != 0 {
