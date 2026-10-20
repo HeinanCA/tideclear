@@ -19,6 +19,7 @@ import (
 
 // fakeAWS serves insight summaries in pages keyed by nextToken ("" first).
 type fakeAWS struct {
+	addonFake
 	pages   map[string]*eks.ListInsightsOutput
 	listIn  []*eks.ListInsightsInput
 	listErr error

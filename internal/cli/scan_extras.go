@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/HeinanCA/tideclear/internal/addons"
 	"github.com/HeinanCA/tideclear/internal/apiscan"
 	"github.com/HeinanCA/tideclear/internal/eksinfo"
 	"github.com/HeinanCA/tideclear/internal/insights"
@@ -18,24 +19,56 @@ import (
 // collectExtras runs the optional checks a scan was asked for. A check that
 // fails for a non-credential reason degrades (a stderr line and a skipped
 // entry, the rest of the report intact); a credential failure or an
-// interrupted run is returned and exits 2.
+// interrupted run is returned and exits 2. A --path scan has no cluster
+// reads at all. A live scan without --cluster notes the skipped add-on
+// check in the report (stdout and JSON), never on stderr.
 func collectExtras(ctx context.Context, stderr io.Writer, deps Deps, fl scanFlags, res apiscan.Result, target rules.Version) (report.Extras, error) {
-	if !fl.insights {
+	switch {
+	case fl.pathSet:
 		return report.Extras{}, nil
+	case fl.cluster == "":
+		return report.Extras{Skipped: []report.CheckSkipped{{Check: "addons", Reason: "needs --cluster"}}}, nil
 	}
-	return insightsExtras(ctx, stderr, deps, fl, res, target)
-}
-
-func insightsExtras(ctx context.Context, stderr io.Writer, deps Deps, fl scanFlags, res apiscan.Result, target rules.Version) (report.Extras, error) {
-	ex := report.Extras{InsightsRan: true}
 	regions, err := resolveRegions(deps, fl.profile, fl.region, false)
 	if err != nil {
-		return ex, err
+		return report.Extras{}, err
 	}
 	api, err := deps.Cluster(fl.profile, regions[0])
 	if err != nil {
-		return ex, err
+		return report.Extras{}, err
 	}
+	var ex report.Extras
+	var compat []insights.AddonCompat
+	if fl.insights {
+		if ex, compat, err = insightsExtras(ctx, stderr, api, deps, fl, res, target); err != nil {
+			return ex, err
+		}
+	}
+	return addonsExtras(ctx, stderr, api, fl, target, ex, compat)
+}
+
+// addonsExtras adds the add-on check. The insight's add-on view is only
+// cross-checked when insights ran; the direct check always wins.
+func addonsExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, fl scanFlags, target rules.Version, ex report.Extras, compat []insights.AddonCompat) (report.Extras, error) {
+	rows, err := addons.Check(ctx, api, fl.cluster, target)
+	switch {
+	case err == nil:
+		if fl.insights {
+			rows = addons.CrossCheck(rows, compat)
+		}
+		ex.Addons = rows
+	case eksinfo.IsCredentialFailure(err), ctx.Err() != nil:
+		return ex, fmt.Errorf("read add-ons for %s: %w", fl.cluster, err)
+	default:
+		reason := oneLine(err.Error())
+		ex.Skipped = append(ex.Skipped, report.CheckSkipped{Check: "addons", Reason: reason})
+		_, _ = fmt.Fprintf(stderr, "tideclear: warning: addons check skipped: %s\n", reason)
+	}
+	return ex, nil
+}
+
+func insightsExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, deps Deps, fl scanFlags, res apiscan.Result, target rules.Version) (report.Extras, []insights.AddonCompat, error) {
+	ex := report.Extras{InsightsRan: true}
 	ins, err := insights.Load(ctx, api, fl.cluster, &target)
 	switch {
 	case err == nil:
@@ -50,18 +83,24 @@ func insightsExtras(ctx context.Context, stderr io.Writer, deps Deps, fl scanFla
 			ex.Insights = append(ex.Insights, reconcile.MissingInsight(target.String()))
 		}
 	case eksinfo.IsCredentialFailure(err), ctx.Err() != nil:
-		return ex, fmt.Errorf("read insights for %s: %w", fl.cluster, err)
+		return ex, nil, fmt.Errorf("read insights for %s: %w", fl.cluster, err)
 	default:
 		reason := oneLine(err.Error())
 		ex.Insights = []reconcile.Row{reconcile.Unavailable(reason)}
 		ex.Skipped = []report.CheckSkipped{{Check: "insights", Reason: reason}}
 		_, _ = fmt.Fprintf(stderr, "tideclear: warning: insights check skipped: %s\n", reason)
 	}
-	return ex, nil
+	var compat []insights.AddonCompat
+	for _, in := range ins {
+		compat = append(compat, in.AddonCompat...)
+	}
+	return ex, compat, nil
 }
 
 // exitFor is the scan's verdict: ErrBlockers on any live BLOCKER finding or
-// BLOCKER reconcile row; with strict, also on STALE or UNKNOWN reconcile rows.
+// BLOCKER reconcile row; with strict, also on STALE or UNKNOWN reconcile rows
+// and UNKNOWN add-on rows. A skipped check and an incompatible add-on (a
+// WARNING) never count.
 func exitFor(res apiscan.Result, ex report.Extras, strict bool) error {
 	for _, it := range res.Findings {
 		if it.Finding.Severity == rules.SeverityBlocker {
@@ -77,6 +116,9 @@ func exitFor(res apiscan.Result, ex report.Extras, strict bool) error {
 				return ErrBlockers
 			}
 		}
+	}
+	if strict && slices.ContainsFunc(ex.Addons, func(r addons.Row) bool { return r.Status == addons.StatusUnknown }) {
+		return ErrBlockers
 	}
 	return nil
 }

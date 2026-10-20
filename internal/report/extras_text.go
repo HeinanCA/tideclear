@@ -13,15 +13,23 @@ const maxEvidence = 3
 
 // extrasText writes the sections the optional checks add; nothing for zero Extras.
 func extrasText(w io.Writer, ex Extras) error {
-	if !ex.InsightsRan {
-		return nil
+	if ex.InsightsRan {
+		if err := insightsSection(w, ex.Insights); err != nil {
+			return err
+		}
 	}
-	if err := insightsSection(w, ex.Insights); err != nil {
+	if err := addonsSection(w, ex.Addons); err != nil {
 		return err
 	}
 	if n := ex.unknowns(); n > 0 {
-		_, err := fmt.Fprintf(w, "result not clean: %d unknown\n", n)
-		return err
+		if _, err := fmt.Fprintf(w, "result not clean: %d unknown\n", n); err != nil {
+			return err
+		}
+	}
+	for _, s := range ex.Skipped {
+		if _, err := fmt.Fprintf(w, "check skipped: %s: %s\n", s.Check, s.Reason); err != nil {
+			return err
+		}
 	}
 	return nil
 }

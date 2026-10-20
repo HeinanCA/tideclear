@@ -3,6 +3,7 @@ package report
 import (
 	"time"
 
+	"github.com/HeinanCA/tideclear/internal/addons"
 	"github.com/HeinanCA/tideclear/internal/reconcile"
 )
 
@@ -13,6 +14,7 @@ type CheckSkipped struct{ Check, Reason string }
 // adds nothing, so a plain scan prints exactly what it always did.
 type Extras struct {
 	Insights    []reconcile.Row
+	Addons      []addons.Row
 	InsightsRan bool // --insights was given, so the section shows even when empty
 	Skipped     []CheckSkipped
 }
@@ -25,6 +27,11 @@ func (e Extras) unknowns() int {
 			n++
 		}
 	}
+	for _, r := range e.Addons {
+		if r.Status == addons.StatusUnknown {
+			n++
+		}
+	}
 	return n
 }
 
@@ -32,6 +39,7 @@ func (e Extras) unknowns() int {
 // insights array visible (present whenever --insights ran) while a nil one is omitted.
 type extrasJSON struct {
 	Insights      *[]insightRowJSON  `json:"insights,omitempty"`
+	Addons        []addonRowJSON     `json:"addons,omitempty"`
 	ChecksSkipped []checkSkippedJSON `json:"checksSkipped,omitempty"`
 }
 
@@ -76,6 +84,9 @@ func (e Extras) json() extrasJSON {
 			rows = append(rows, rowJSON(r))
 		}
 		out.Insights = &rows
+	}
+	for _, r := range e.Addons {
+		out.Addons = append(out.Addons, addonJSON(r))
 	}
 	for _, s := range e.Skipped {
 		out.ChecksSkipped = append(out.ChecksSkipped, checkSkippedJSON(s))

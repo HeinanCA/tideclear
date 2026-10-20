@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/HeinanCA/tideclear/internal/addons"
 	"github.com/HeinanCA/tideclear/internal/eksinfo"
 	"github.com/HeinanCA/tideclear/internal/insights"
 	"github.com/spf13/cobra"
@@ -48,6 +49,7 @@ func exitCode(err error) int {
 // read-only by construction; later checks add their own read-only interfaces.
 type ClusterAPI interface {
 	insights.API
+	addons.API
 }
 
 // Deps holds the external adapters commands use; tests substitute fakes.
