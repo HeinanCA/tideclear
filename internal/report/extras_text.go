@@ -98,7 +98,7 @@ func evidenceText(r reconcile.Row) string {
 		if c.LastRequest != nil {
 			last = c.LastRequest.UTC().Format("2006-01-02")
 		}
-		parts = append(parts, fmt.Sprintf("client %s x%d, last %s", c.UserAgent, c.Requests, last))
+		parts = append(parts, fmt.Sprintf("client %s x%d, last %s", plain(c.UserAgent), c.Requests, last))
 	}
 	if len(parts) == 0 {
 		return dash(r.Reason)
