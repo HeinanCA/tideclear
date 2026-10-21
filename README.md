@@ -125,7 +125,7 @@ insight, with a verdict:
 
 | Verdict | Meaning |
 |---|---|
-| `BLOCKER` | Live objects use the API, or a client called it within 7 days of the insight's refresh time. The row names the objects, or the client's user agent, request count and last call. |
+| `BLOCKER` | Live objects use the API, or a counted client called it within 7 days of the insight's refresh time, or a counted client has no call time at all. The row names the objects, or the client's user agent, request count and last call. |
 | `STALE` | No live objects, the last client call is older than 7 days, and the live scan read the resource. AWS still flags it. The row shows `clears` with the last call plus 30 days. |
 | `OK` | AWS reports `PASSING`, and the data is fresh. |
 | `UNKNOWN` | tideclear cannot prove the row clean or stale. See below. |
@@ -136,7 +136,8 @@ A row is `UNKNOWN` when:
 - the insight has no API details;
 - the insight data is older than 7 days, has no refresh time, or has a refresh time in the future;
 - the live scan did not read the resource, or some of its objects had no apiVersion evidence;
-- no client call date is available;
+- the insight counted no client calls at all: every client entry has zero requests and no call
+  time, so there is no call date to judge by;
 - the insight's `usage` path is not understood;
 - AWS returned no deprecated-API insight for the target.
 
