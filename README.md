@@ -39,22 +39,20 @@ Scan the cluster in your current kube context against its next minor version (sa
 ```console
 $ tideclear scan
 cluster: demo-ctx (api.example.test)
-KIND            APIVERSION                            NAMESPACE  NAME  REPLACEMENT                      REMOVED IN        SEVERITY
-FlowSchema      flowcontrol.apiserver.k8s.io/v1beta3  -          web   flowcontrol.apiserver.k8s.io/v1  1.32              BLOCKER
-ResourceClaim   resource.k8s.io/v1beta1               demo       gpu   resource.k8s.io/v1               1.38 (projected)  WARNING
-LeaseCandidate  coordination.k8s.io/v1beta1           demo       api   -                                1.39 (projected)  WARNING
+KIND         APIVERSION                 NAMESPACE  NAME  REPLACEMENT           REMOVED IN  SEVERITY
+IPAddress    networking.k8s.io/v1beta1  -          api   networking.k8s.io/v1  1.37        BLOCKER
+ServiceCIDR  networking.k8s.io/v1beta1  -          main  networking.k8s.io/v1  1.37        BLOCKER
 ```
 
 Scan manifests in a repo or in CI, with no cluster or AWS access:
 
 ```console
-$ tideclear scan --path ./manifests --target 1.37
-path: ./manifests
-files scanned: 10
-KIND                      APIVERSION                    NAMESPACE  NAME                  REPLACEMENT              REMOVED IN        SEVERITY  ORIGIN
-CustomResourceDefinition  apiextensions.k8s.io/v1beta1  -          widgets.example.test  apiextensions.k8s.io/v1  1.22              BLOCKER   crd/crd.yaml:0
-IPAddress                 networking.k8s.io/v1beta1     -          api                   networking.k8s.io/v1     1.37              BLOCKER   multidoc/stack.yaml:4
-ClusterTrustBundle        certificates.k8s.io/v1beta1   -          api                   certificates.k8s.io/v1   1.40 (projected)  WARNING   bad/nested/bundle.yaml:0
+$ tideclear scan --path ./k8s --target 1.37
+path: ./k8s
+files scanned: 2
+KIND        APIVERSION     NAMESPACE  NAME     REPLACEMENT  REMOVED IN  SEVERITY  ORIGIN
+CronJob     batch/v1beta1  demo       nightly  batch/v1     1.25        BLOCKER   cron.yaml:0
+Deployment  apps/v1beta1   demo       web      apps/v1      1.16        BLOCKER   deploy.yaml:0
 ```
 
 Show the EKS Upgrade Insights for one cluster (sample output):
@@ -62,9 +60,9 @@ Show the EKS Upgrade Insights for one cluster (sample output):
 ```console
 $ tideclear insights --cluster demo-cluster
 NAME                                         TARGET  STATUS   REFRESHED
-Deprecated APIs removed in Kubernetes v1.32  1.32    ERROR    14h ago
-EKS add-on version compatibility             1.32    PASSING  14h ago
-Kubelet version skew                         1.32    UNKNOWN  -
+Deprecated APIs removed in Kubernetes v1.25  1.25    ERROR    14h ago
+EKS add-on version compatibility             1.25    PASSING  14h ago
+Kubelet version skew                         1.25    UNKNOWN  -
 ```
 
 Reconcile those insights with a live scan. `--insights` needs `--cluster` and a live scan
@@ -73,20 +71,18 @@ Reconcile those insights with a live scan. `--insights` needs `--cluster` and a 
 ```console
 $ tideclear scan --cluster demo-cluster --insights
 cluster: demo-ctx (api.example.test) [EKS: demo-cluster]
-KIND        APIVERSION                            NAMESPACE  NAME  REPLACEMENT                      REMOVED IN  SEVERITY
-FlowSchema  flowcontrol.apiserver.k8s.io/v1beta3  -          web   flowcontrol.apiserver.k8s.io/v1  1.32        BLOCKER
+no findings for target 1.25
 
 upgrade insights:
-APIVERSION                            KIND                        AWS STATUS  VERDICT                   EVIDENCE
-flowcontrol.apiserver.k8s.io/v1beta3  FlowSchema                  ERROR       BLOCKER                   object FlowSchema web
-flowcontrol.apiserver.k8s.io/v1beta3  PriorityLevelConfiguration  WARNING     STALE, clears 2026-11-09  client kubectl/1.28 x3, last 2026-10-10
+APIVERSION     KIND     AWS STATUS  VERDICT                   EVIDENCE
+batch/v1beta1  CronJob  WARNING     STALE, clears 2026-11-09  client kubectl x3, last 2026-10-10
 result not clean: 1 stale
 ```
 
-The `FlowSchema` row is a real blocker: a live object still uses the removed API. The
-`PriorityLevelConfiguration` row is STALE: no live object uses it, and the last client call
-(2026-10-10) was more than 7 days before the insight refreshed. AWS still reports it, and
-clears it on the date shown. Add `--strict` to exit 1 on STALE and UNKNOWN rows too.
+The `CronJob` row is STALE: the live scan found no object using the API, and the last client
+call (2026-10-10) was more than 7 days before the insight refreshed. AWS still reports it, and
+clears it on the date shown. A live object using the API would make the row a BLOCKER. Add
+`--strict` to exit 1 on STALE and UNKNOWN rows too.
 
 Add `--output json` to any command for machine-readable output.
 
@@ -175,10 +171,10 @@ Self-managed add-ons are not checked.
 
 ```console
 add-ons:
-NAME        CURRENT            MIN COMPATIBLE     STATUS                  NOTE
-demo-dns    v1.1.0-eksbuild.1  -                  OK                      -
-demo-net    v1.0.0-eksbuild.1  v1.2.0-eksbuild.1  INCOMPATIBLE (WARNING)  insight lists this version as compatible; direct check says not
-demo-agent  v3.0.0             -                  UNKNOWN                 no version of this add-on lists Kubernetes 1.35 as compatible
+NAME   CURRENT  MIN COMPATIBLE  STATUS                  NOTE
+dns    v1.1.0   -               OK                      -
+net    v1.0.0   v1.2.0          INCOMPATIBLE (WARNING)  -
+agent  -        -               UNKNOWN                 current version not reported
 ```
 
 **Nodes.** Only findings get a row. tideclear flags:
