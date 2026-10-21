@@ -327,6 +327,8 @@ says so.
   add-on compatibility, and node AMI and kubelet checks.
 - Karpenter and VPC CNI compatibility checks.
 
+Describe your EKS upgrade problem in a [GitHub issue](https://github.com/HeinanCA/tideclear/issues).
+
 ## Credits
 
 - [Pluto](https://github.com/FairwindsOps/pluto) by Fairwinds (Apache-2.0) provides the embedded
