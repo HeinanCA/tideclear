@@ -1,0 +1,43 @@
+---
+name: Bug report
+description: tideclear gave a wrong, confusing or missing result on your EKS upgrade.
+title: "[bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for telling us what went wrong. Redact account IDs, cluster names and
+        resource names if you prefer; the shape of the problem is what matters.
+  - type: textarea
+    id: upgrade-situation
+    attributes:
+      label: Your EKS upgrade situation
+      description: >-
+        Which Kubernetes version are you on, which one are you moving to, and what is
+        making the upgrade hard or risky for you?
+      placeholder: "Example: 1.31 to 1.32, about 40 workloads, several Helm charts we do not own."
+    validations:
+      required: true
+  - type: textarea
+    id: ran-against-cluster
+    attributes:
+      label: Did you run tideclear against a cluster, and what happened?
+      description: >-
+        Say which command you ran, whether it was against a live cluster or only
+        manifests, what you expected, and what you saw instead. Paste the relevant
+        output.
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: Output of `tideclear --version`
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: heard-about
+    attributes:
+      label: Where did you hear about this? (optional)
+    validations:
+      required: false
