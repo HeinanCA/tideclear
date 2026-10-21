@@ -90,6 +90,7 @@ func newRootCmd(deps Deps, stdout, stderr io.Writer) *cobra.Command {
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newClustersCmd(deps))
 	root.AddCommand(newScanCmd(deps))
+	root.AddCommand(newDemoCmd(deps))
 	root.AddCommand(newInsightsCmd(deps))
 	return root
 }
