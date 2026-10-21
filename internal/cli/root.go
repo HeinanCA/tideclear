@@ -80,11 +80,14 @@ func newRootCmd(deps Deps, stdout, stderr io.Writer) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.NoArgs,
+		Version:       buildVersion,
 		// Runnable so cobra validates Args; bare invocation prints help.
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)
+	root.SetVersionTemplate(versionLine("{{.Version}}"))
+	root.AddCommand(newVersionCmd())
 	root.AddCommand(newClustersCmd(deps))
 	root.AddCommand(newScanCmd(deps))
 	root.AddCommand(newInsightsCmd(deps))
