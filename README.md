@@ -323,7 +323,7 @@ says so.
 
 ## Roadmap
 
-- Done in weekend 2: EKS Upgrade Insights with reconciliation against the 30-day audit window,
+- Available now: EKS Upgrade Insights with reconciliation against the 30-day audit window,
   add-on compatibility, and node AMI and kubelet checks.
 - Karpenter and VPC CNI compatibility checks.
 
