@@ -21,6 +21,41 @@ formula will follow.
 
 ## 30-second usage
 
+No cluster or credentials yet? Run the built-in demonstration. It prints a sample report for a
+fictional cluster. Nothing is read from AWS or Kubernetes, and it exits 0.
+
+```console
+$ tideclear demo
+SAMPLE DATA: this is a built-in demonstration, not a scan of your cluster.
+
+cluster: sample-context (-) [EKS: sample-cluster]
+KIND        APIVERSION                            NAMESPACE  NAME  REPLACEMENT                      REMOVED IN  SEVERITY
+FlowSchema  flowcontrol.apiserver.k8s.io/v1beta3  -          web   flowcontrol.apiserver.k8s.io/v1  1.32        BLOCKER
+
+upgrade insights:
+APIVERSION                            KIND                        AWS STATUS  VERDICT                   EVIDENCE
+flowcontrol.apiserver.k8s.io/v1beta3  FlowSchema                  ERROR       BLOCKER                   object FlowSchema web
+flowcontrol.apiserver.k8s.io/v1beta3  PriorityLevelConfiguration  WARNING     STALE, clears 2026-11-10  client kubectl/1.28 x3, last 2026-10-11
+
+add-ons:
+NAME        CURRENT            MIN COMPATIBLE     STATUS                  NOTE
+sample-dns  v1.2.0-eksbuild.1  -                  OK                      -
+sample-net  v1.0.0-eksbuild.1  v1.2.0-eksbuild.1  INCOMPATIBLE (WARNING)  -
+
+nodes:
+SOURCE     NAME                VERSION  AMI         RELEASE           OS IMAGE  SEVERITY  REASONS
+nodegroup  sample-workers-al2  1.31     AL2_x86_64  1.31.13-20251001  -         WARNING   Amazon Linux 2 (amiType AL2_x86_64) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane past 1.32
+result not clean: 1 stale
+
+This was a built-in demonstration of the report shape. Nothing was read from AWS or Kubernetes,
+and it says nothing about any real cluster. Dates are relative to the day you run it.
+A real scan with a BLOCKER exits 1; demo always exits 0.
+To scan a real cluster: tideclear scan --cluster NAME --insights
+```
+
+The demo shows the shape of a report only: the data is built into the binary, so it says nothing
+about your cluster, and the dates in it move with the day you run it.
+
 List clusters with their support dates (sample output):
 
 ```console
@@ -94,6 +129,7 @@ Add `--output json` to any command for machine-readable output.
 | `insights` | `--cluster` (required), `--profile`, `--region`, `--target`, `--output` |
 | `scan` (live) | `--kubeconfig`, `--context`, `--target`, `--cluster`, `--profile`, `--region`, `--insights`, `--strict`, `--output` |
 | `scan --path` | `--path`, and `--target` or `--cluster`, `--output` |
+| `demo` | none |
 
 The default target is the current minor version plus one. A target more than one minor ahead
 is rejected, because EKS upgrades one minor at a time. With `--cluster`, the current version
