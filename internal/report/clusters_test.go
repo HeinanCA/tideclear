@@ -22,7 +22,7 @@ func ip(n int) *int { return &n }
 
 func sample() []eksinfo.Cluster {
 	return []eksinfo.Cluster{
-		{Name: "demo-a", Region: "us-east-1", Version: "1.35", StandardEnd: d(2027, 3, 27), ExtendedEnd: d(2028, 3, 27), DaysLeft: ip(159), Support: eksinfo.SupportStandard},
+		{Name: "demo-a", Region: "us-east-1", Version: "1.36", StandardEnd: d(2027, 8, 2), ExtendedEnd: d(2028, 8, 2), DaysLeft: ip(287), Support: eksinfo.SupportStandard},
 		{Name: "demo-b", Region: "eu-west-1", Version: "1.31", StandardEnd: d(2025, 11, 26), ExtendedEnd: d(2026, 11, 26), DaysLeft: ip(38), Support: eksinfo.SupportExtended},
 		{Name: "demo-c", Region: "eu-west-1", Version: "1.25", StandardEnd: d(2024, 5, 1), ExtendedEnd: d(2025, 5, 1), DaysLeft: ip(-536), Support: eksinfo.SupportUnsupported},
 		{Name: "demo-d", Region: "eu-west-1", Version: "9.99", Support: eksinfo.SupportUnknown},

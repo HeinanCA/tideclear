@@ -14,7 +14,7 @@ func TestScanTextInsightsGolden(t *testing.T) {
 	if err := ScanText(&b, staleScan(t), staleInsightsSample(t)); err != nil {
 		t.Fatal(err)
 	}
-	golden(t, "scan-insights.txt", b.Bytes())
+	golden(t, "scan-insights-stale.txt", b.Bytes())
 }
 
 func TestScanJSONInsightsGolden(t *testing.T) {
@@ -24,7 +24,7 @@ func TestScanJSONInsightsGolden(t *testing.T) {
 	if err := ScanJSON(&b, staleScan(t), ex); err != nil {
 		t.Fatal(err)
 	}
-	golden(t, "scan-insights.json", b.Bytes())
+	golden(t, "scan-insights-stale.json", b.Bytes())
 }
 
 func TestScanTextStaleRendersClearDate(t *testing.T) {
