@@ -15,9 +15,9 @@ var insightsNow = time.Date(2026, 10, 19, 22, 0, 0, 0, time.UTC)
 func sampleInsights(age time.Duration) []insights.Insight {
 	at := insightsNow.Add(-age)
 	return []insights.Insight{
-		{ID: "i1", Name: "Deprecated APIs removed in Kubernetes v1.32", Target: "1.32", Status: insights.StatusError, Reason: "deprecated APIs in use", LastRefresh: at},
-		{ID: "i2", Name: "EKS add-on version compatibility", Target: "1.32", Status: insights.StatusPassing, LastRefresh: at},
-		{ID: "i3", Name: "Kubelet version skew", Target: "1.32", Status: insights.StatusUnknown},
+		{ID: "i1", Name: "Deprecated APIs removed in Kubernetes v1.37", Target: "1.37", Status: insights.StatusError, Reason: "deprecated APIs in use", LastRefresh: at},
+		{ID: "i2", Name: "EKS add-on version compatibility", Target: "1.37", Status: insights.StatusPassing, LastRefresh: at},
+		{ID: "i3", Name: "Kubelet version skew", Target: "1.37", Status: insights.StatusUnknown},
 	}
 }
 

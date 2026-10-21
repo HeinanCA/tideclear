@@ -21,10 +21,10 @@ import (
 	fakedyn "k8s.io/client-go/dynamic/fake"
 )
 
-// The weekend-2 samples (README quotes their goldens) tell one story: an EKS
-// cluster at 1.34 about to move to 1.35. Every node, add-on and insight row is
-// what the real judge returns for that input, so a sample can never show a row
-// the tool cannot produce.
+// The weekend-2 samples (scan, scan-full, scan-nodes, scan-addons) tell one
+// story: an EKS cluster at 1.34 about to move to 1.35. Every node, add-on and
+// insight row is what the real judge returns for that input. The README does
+// not quote these goldens; the ones it quotes are listed in readme_test.go.
 var (
 	current134 = rules.Version{Major: 1, Minor: 34}
 	target135  = rules.Version{Major: 1, Minor: 35}
@@ -93,7 +93,7 @@ func insightsSample(t *testing.T) Extras {
 	return Extras{InsightsRan: true, Insights: reconcile.Reconcile(ins, w2Scan(t), sampleNow)}
 }
 
-// staleScan is the live scan behind scan-insights: a 1.31 cluster moving to
+// staleScan is the live scan behind scan-insights-stale: a 1.31 cluster moving to
 // 1.32, where flowcontrol v1beta3 is removed.
 func staleScan(t *testing.T) apiscan.Result {
 	t.Helper()
@@ -234,6 +234,7 @@ func TestSampleInsightRowsAreRemovedAtTheirTarget(t *testing.T) {
 	}{
 		"1.34 to 1.35 (full)":     {target135, insightsSample(t)},
 		"1.31 to 1.32 (insights)": {target132, staleInsightsSample(t)},
+		"1.36 to 1.37 (README)":   {target137, storyInsights(t)},
 	} {
 		if len(c.ex.Insights) == 0 {
 			t.Errorf("%s: no insight rows", name)

@@ -1,9 +1,9 @@
-cluster: demo-ctx (api.example.test) [EKS: demo-cluster]
-KIND        APIVERSION                            NAMESPACE  NAME  REPLACEMENT                      REMOVED IN  SEVERITY
-FlowSchema  flowcontrol.apiserver.k8s.io/v1beta3  -          web   flowcontrol.apiserver.k8s.io/v1  1.32        BLOCKER
+cluster: demo-ctx (api.example.test) [EKS: demo-a]
+KIND         APIVERSION                 NAMESPACE  NAME  REPLACEMENT           REMOVED IN  SEVERITY
+IPAddress    networking.k8s.io/v1beta1  -          api   networking.k8s.io/v1  1.37        BLOCKER
+ServiceCIDR  networking.k8s.io/v1beta1  -          main  networking.k8s.io/v1  1.37        BLOCKER
 
 upgrade insights:
-APIVERSION                            KIND                        AWS STATUS  VERDICT                   EVIDENCE
-flowcontrol.apiserver.k8s.io/v1beta3  FlowSchema                  ERROR       BLOCKER                   object FlowSchema web
-flowcontrol.apiserver.k8s.io/v1beta3  PriorityLevelConfiguration  WARNING     STALE, clears 2026-11-09  client kubectl/1.28 x3, last 2026-10-10
-result not clean: 1 stale
+APIVERSION                 KIND         AWS STATUS  VERDICT  EVIDENCE
+networking.k8s.io/v1beta1  IPAddress    ERROR       BLOCKER  object IPAddress api
+networking.k8s.io/v1beta1  ServiceCIDR  ERROR       BLOCKER  object ServiceCIDR main

@@ -21,49 +21,34 @@ formula will follow.
 
 ## 30-second usage
 
-No cluster or credentials yet? Run the built-in demonstration. It prints a sample report for a
-fictional cluster. Nothing is read from AWS or Kubernetes, and it exits 0.
+Scan the manifests in a repo or in CI. This needs no cluster and no AWS credentials (sample
+output):
 
 ```console
-$ tideclear demo
-SAMPLE DATA: this is a built-in demonstration, not a scan of your cluster.
-
-cluster: sample-context (-) [EKS: sample-cluster]
-KIND        APIVERSION                            NAMESPACE  NAME  REPLACEMENT                      REMOVED IN  SEVERITY
-FlowSchema  flowcontrol.apiserver.k8s.io/v1beta3  -          web   flowcontrol.apiserver.k8s.io/v1  1.32        BLOCKER
-
-upgrade insights:
-APIVERSION                            KIND                        AWS STATUS  VERDICT                   EVIDENCE
-flowcontrol.apiserver.k8s.io/v1beta3  FlowSchema                  ERROR       BLOCKER                   object FlowSchema web
-flowcontrol.apiserver.k8s.io/v1beta3  PriorityLevelConfiguration  WARNING     STALE, clears 2026-11-10  client kubectl/1.28 x3, last 2026-10-11
-
-add-ons:
-NAME        CURRENT            MIN COMPATIBLE     STATUS                  NOTE
-sample-dns  v1.2.0-eksbuild.1  -                  OK                      -
-sample-net  v1.0.0-eksbuild.1  v1.2.0-eksbuild.1  INCOMPATIBLE (WARNING)  -
-
-nodes:
-SOURCE     NAME                VERSION  AMI         RELEASE           OS IMAGE  SEVERITY  REASONS
-nodegroup  sample-workers-al2  1.31     AL2_x86_64  1.31.13-20251001  -         WARNING   Amazon Linux 2 (amiType AL2_x86_64) is cgroup v1: kubelet 1.35+ will not start on it and EKS AL2 AMIs stop at 1.32, so these nodes cannot follow the control plane past 1.32
-result not clean: 1 stale
-
-This was a built-in demonstration of the report shape. Nothing was read from AWS or Kubernetes,
-and it says nothing about any real cluster. Dates are relative to the day you run it.
-A real scan with a BLOCKER exits 1; demo always exits 0.
-To scan a real cluster: tideclear scan --cluster NAME --insights
+$ tideclear scan --path ./k8s --target 1.37
+path: ./k8s
+files scanned: 2
+KIND        APIVERSION     NAMESPACE  NAME     REPLACEMENT  REMOVED IN  SEVERITY  ORIGIN
+CronJob     batch/v1beta1  demo       nightly  batch/v1     1.25        BLOCKER   cron.yaml:0
+Deployment  apps/v1beta1   demo       web      apps/v1      1.16        BLOCKER   deploy.yaml:0
 ```
 
-The demo shows the shape of a report only: the data is built into the binary, so it says nothing
-about your cluster, and the dates in it move with the day you run it.
+The samples below follow one cluster, `demo-a`: an EKS cluster on 1.36 that is about to move to
+1.37. Dates and ages in them are as of 2026-10-19.
+
+To see the shape of a full report with no input at all, run `tideclear demo`. It prints a built-in
+sample for a fictional cluster, reads nothing from AWS or Kubernetes, and its dates move with the
+day you run it.
 
 List clusters with their support dates (sample output):
 
 ```console
 $ tideclear clusters --all-regions
 CLUSTER  REGION     VERSION  STANDARD END  EXTENDED END  DAYS LEFT  SUPPORT
-demo-a   us-east-1  1.35     2027-03-27    2028-03-27    159        standard
+demo-a   us-east-1  1.36     2027-08-02    2028-08-02    287        standard
 demo-b   eu-west-1  1.31     2025-11-26    2026-11-26    38         EXTENDED
 demo-c   eu-west-1  1.25     2024-05-01    2025-05-01    -536       UNSUPPORTED
+demo-d   eu-west-1  9.99     -             -             -          unknown
 ```
 
 `DAYS LEFT` counts to the end of the support phase the cluster is in now. Use `--region` for
@@ -79,45 +64,36 @@ IPAddress    networking.k8s.io/v1beta1  -          api   networking.k8s.io/v1  1
 ServiceCIDR  networking.k8s.io/v1beta1  -          main  networking.k8s.io/v1  1.37        BLOCKER
 ```
 
-Scan manifests in a repo or in CI, with no cluster or AWS access:
-
-```console
-$ tideclear scan --path ./k8s --target 1.37
-path: ./k8s
-files scanned: 2
-KIND        APIVERSION     NAMESPACE  NAME     REPLACEMENT  REMOVED IN  SEVERITY  ORIGIN
-CronJob     batch/v1beta1  demo       nightly  batch/v1     1.25        BLOCKER   cron.yaml:0
-Deployment  apps/v1beta1   demo       web      apps/v1      1.16        BLOCKER   deploy.yaml:0
-```
-
 Show the EKS Upgrade Insights for one cluster (sample output):
 
 ```console
-$ tideclear insights --cluster demo-cluster
+$ tideclear insights --cluster demo-a
 NAME                                         TARGET  STATUS   REFRESHED
-Deprecated APIs removed in Kubernetes v1.25  1.25    ERROR    14h ago
-EKS add-on version compatibility             1.25    PASSING  14h ago
-Kubelet version skew                         1.25    UNKNOWN  -
+Deprecated APIs removed in Kubernetes v1.37  1.37    ERROR    14h ago
+EKS add-on version compatibility             1.37    PASSING  14h ago
+Kubelet version skew                         1.37    UNKNOWN  -
 ```
 
 Reconcile those insights with a live scan. `--insights` needs `--cluster` and a live scan
 (sample output):
 
 ```console
-$ tideclear scan --cluster demo-cluster --insights
-cluster: demo-ctx (api.example.test) [EKS: demo-cluster]
-no findings for target 1.25
+$ tideclear scan --cluster demo-a --insights
+cluster: demo-ctx (api.example.test) [EKS: demo-a]
+KIND         APIVERSION                 NAMESPACE  NAME  REPLACEMENT           REMOVED IN  SEVERITY
+IPAddress    networking.k8s.io/v1beta1  -          api   networking.k8s.io/v1  1.37        BLOCKER
+ServiceCIDR  networking.k8s.io/v1beta1  -          main  networking.k8s.io/v1  1.37        BLOCKER
 
 upgrade insights:
-APIVERSION     KIND     AWS STATUS  VERDICT                   EVIDENCE
-batch/v1beta1  CronJob  WARNING     STALE, clears 2026-11-09  client kubectl x3, last 2026-10-10
-result not clean: 1 stale
+APIVERSION                 KIND         AWS STATUS  VERDICT  EVIDENCE
+networking.k8s.io/v1beta1  IPAddress    ERROR       BLOCKER  object IPAddress api
+networking.k8s.io/v1beta1  ServiceCIDR  ERROR       BLOCKER  object ServiceCIDR main
 ```
 
-The `CronJob` row is STALE: the live scan found no object using the API, and the last client
-call (2026-10-10) was more than 7 days before the insight refreshed. AWS still reports it, and
-clears it on the date shown. A live object using the API would make the row a BLOCKER. Add
-`--strict` to exit 1 on STALE and UNKNOWN rows too.
+Both rows are BLOCKERs: the live scan found objects that use the API. A row with no live
+object, whose last client call was more than 7 days before the insight refreshed, is STALE:
+AWS still reports it, and clears it on the date the row shows. See
+[Insight verdicts](#insight-verdicts). Add `--strict` to exit 1 on STALE and UNKNOWN rows too.
 
 Add `--output json` to any command for machine-readable output.
 
