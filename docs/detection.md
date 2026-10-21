@@ -3,9 +3,9 @@
 ## Why listing is not enough
 
 The Kubernetes API server stores one copy of each object and converts it on read. Listing
-Ingresses through `extensions/v1beta1` returns every Ingress in the cluster, including ones
-created with `networking.k8s.io/v1`. A tool that reports everything it can list through an old
-version produces false positives.
+ResourceClaims through `resource.k8s.io/v1beta1` returns every ResourceClaim in the cluster,
+including ones created with `resource.k8s.io/v1`. A tool that reports everything it can list
+through an old version produces false positives.
 
 ## Live scan
 
