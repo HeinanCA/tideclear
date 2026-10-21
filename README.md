@@ -41,7 +41,7 @@ $ tideclear scan
 cluster: demo-ctx (api.example.test)
 KIND            APIVERSION                            NAMESPACE  NAME  REPLACEMENT                      REMOVED IN        SEVERITY
 FlowSchema      flowcontrol.apiserver.k8s.io/v1beta3  -          web   flowcontrol.apiserver.k8s.io/v1  1.32              BLOCKER
-Ingress         extensions/v1beta1                    demo       web   networking.k8s.io/v1             1.22              BLOCKER
+ResourceClaim   resource.k8s.io/v1beta1               demo       gpu   resource.k8s.io/v1               1.38 (projected)  WARNING
 LeaseCandidate  coordination.k8s.io/v1beta1           demo       api   -                                1.39 (projected)  WARNING
 ```
 
