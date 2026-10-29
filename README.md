@@ -328,8 +328,6 @@ says so.
 - Each extra check (insights, add-ons, nodegroups, nodes) has its own 20-second budget.
 - The Amazon Linux 2 rule is about nodes that must follow the control plane to the target. It
   does not say the nodes fail today.
-- The insights, add-on and node checks are tested against fakes. Validation on a real cluster
-  is still pending.
 - The Pluto rule data was last updated in March 2026. Rules are refreshed by updating the pinned
   copy (see [docs/rules.md](docs/rules.md)).
 
