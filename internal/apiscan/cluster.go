@@ -81,12 +81,7 @@ func (c *clusterSource) Objects(ctx context.Context) (Observed, error) {
 		}
 		return Observed{}, fmt.Errorf("discover API groups: %w", withStatus(err))
 	}
-	wanted := map[rules.GroupKind]bool{}
-	wantedGroup := map[string]bool{}
-	for _, gk := range c.set.Kinds() {
-		wanted[gk] = true
-		wantedGroup[gk.Group] = true
-	}
+	wanted, wantedGroup := wantedKinds(c.set)
 	sort.Slice(groups.Groups, func(i, j int) bool { return groups.Groups[i].Name < groups.Groups[j].Name })
 
 	var obs Observed
@@ -102,6 +97,24 @@ func (c *clusterSource) Objects(ctx context.Context) (Observed, error) {
 		}
 	}
 	return obs, nil
+}
+
+// wantedKinds indexes the kinds the rules cover, and the groups they live in.
+func wantedKinds(set *rules.Set) (map[rules.GroupKind]bool, map[string]bool) {
+	wanted := map[rules.GroupKind]bool{}
+	wantedGroup := map[string]bool{}
+	for _, gk := range set.Kinds() {
+		wanted[gk] = true
+		wantedGroup[gk.Group] = true
+	}
+	return wanted, wantedGroup
+}
+
+// listable reports whether the scan reads r: a wanted kind with the list verb
+// and no subresource. Create-only resources (TokenReview, SubjectAccessReview,
+// ...) answer list with 405.
+func listable(r metav1.APIResource, group string, wanted map[rules.GroupKind]bool) bool {
+	return !strings.Contains(r.Name, "/") && slices.Contains(r.Verbs, "list") && wanted[rules.GroupKind{Group: group, Kind: r.Kind}]
 }
 
 func (c *clusterSource) readGroup(ctx context.Context, g metav1.APIGroup, wanted map[rules.GroupKind]bool, obs *Observed) error {
@@ -146,8 +159,7 @@ func (c *clusterSource) readGroup(ctx context.Context, g metav1.APIGroup, wanted
 			continue
 		}
 		for _, r := range list.APIResources {
-			// Create-only resources (TokenReview, SubjectAccessReview, ...) answer list with 405.
-			if strings.Contains(r.Name, "/") || !slices.Contains(r.Verbs, "list") || !wanted[rules.GroupKind{Group: g.Name, Kind: r.Kind}] || found[r.Kind] {
+			if !listable(r, g.Name, wanted) || found[r.Kind] {
 				continue
 			}
 			found[r.Kind] = true

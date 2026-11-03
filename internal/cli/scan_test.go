@@ -50,7 +50,9 @@ func newCluster(major, minor string) cluster {
 	}
 	dyn := fakedyn.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
 		map[schema.GroupVersionResource]string{fsGVR: "FlowSchemaList", ingGVR: "IngressList", nodeGVR: "NodeList"}, fs)
-	return cluster{disc: disc, dyn: dyn}
+	c := cluster{disc: disc, dyn: dyn}
+	answerSSAR(c) // the fake API server grants every review unless a test says otherwise
+	return c
 }
 
 func kubeDeps(t *testing.T, c cluster) Deps {
@@ -170,7 +172,7 @@ func TestScanSkippedReportedOnStderrAndJSON(t *testing.T) {
 	// Groups are visited in name order: flowcontrol first, then networking.
 	c.disc.PrependReactor("get", "resource", func(clienttesting.Action) (bool, runtime.Object, error) {
 		calls++
-		if calls == 2 {
+		if calls == 2+preflightDiscoveryCalls { // the permission preflight reads each group first
 			return true, nil, apierrors.NewServiceUnavailable("aggregated api down")
 		}
 		return false, nil, nil

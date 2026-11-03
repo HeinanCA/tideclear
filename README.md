@@ -224,8 +224,9 @@ renamed or removed.
 | `addons[]` | One row per add-on EKS manages. Present when the add-on check ran, even if empty. |
 | `nodes[]` | Node and nodegroup findings. Omitted when empty. |
 | `checksSkipped[]` | Checks that did not run. Omitted when empty. |
+| `missingPermissions[]` | `group` (empty for the core group), `resource`, `verb` (`list`) for each access the permission check found denied. Omitted when empty. |
 
-`schemaVersion` stays 1. The four keys above are additive.
+`schemaVersion` stays 1. The five keys above are additive.
 
 - `insights[]` row: `usage`, `apiVersion`, `kind`, `resource`, `awsStatus`, `verdict` (`BLOCKER`,
   `STALE`, `OK` or `UNKNOWN`), `clearsOn` (RFC 3339, null unless `STALE`), `reason`,
@@ -235,7 +236,7 @@ renamed or removed.
   `UNKNOWN`), `severity`, `reason`, `insightNote`.
 - `nodes[]` row: `source` (`nodegroup` or `node`), `name`, `version`, `amiType`,
   `releaseVersion`, `osImage`, `severity`, `reasons[]`.
-- `checksSkipped[]` row: `check` (`insights`, `addons`, `nodegroups` or `nodes`), `reason`.
+- `checksSkipped[]` row: `check` (`insights`, `addons`, `nodegroups`, `nodes` or `permissions`), `reason`.
 
 `insights` JSON has `insights[]` (`id`, `name`, `target`, `status`, `reason`,
 `lastRefreshTime`).
@@ -276,6 +277,16 @@ AWS (only for `clusters`, `insights` and `scan --cluster`). Every action is read
 Kubernetes (only for a live `scan`): `get` and `list` on the resources being checked, plus API
 discovery. A kind that returns 403 is skipped and reported, not fatal. The node check also needs
 `list` on `nodes`, which is cluster-scoped. The built-in `view` ClusterRole does not grant it.
+
+Before it lists anything, a live `scan` checks `list` access to each resource it reads, and to
+`nodes`, with a `SelfSubjectAccessReview`. This needs `create` on `selfsubjectaccessreviews`. The
+default `system:basic-user` role grants it to all authenticated users. The scan prints all gaps
+at once: one `missing permissions` line on stderr, and in the report a list of the gaps with a
+ready-to-apply `ClusterRole` named `tideclear-reader`. A denied kind is still skipped, as above,
+and the exit code does not change. If the check cannot run, tideclear prints one
+`permission check skipped` line on stderr and scans as usual. A Kubernetes 401 on the check
+exits 2. If it stops part way, or cannot read a group version, it prints the gaps it found and one
+`permission check incomplete` line. Both cases add a `permissions` entry to `checksSkipped[]`. A skipped check never makes `--strict` exit 1.
 
 If a call is denied, the check degrades. A denied `ListInsights`, `DescribeInsight`,
 `ListAddons`, `ListNodegroups`, `DescribeNodegroup` or node list skips that check: tideclear

@@ -14,6 +14,7 @@ import (
 	"github.com/HeinanCA/tideclear/internal/report"
 	"github.com/HeinanCA/tideclear/internal/rules"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 )
 
@@ -79,7 +80,7 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 	if err != nil {
 		return &ToolError{Err: err}
 	}
-	src, dyn, err := newSource(cmd, deps, fl, set)
+	src, disc, dyn, err := newSource(cmd, deps, fl, set)
 	if err != nil {
 		return &ToolError{Err: err}
 	}
@@ -94,6 +95,10 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 	if err != nil {
 		return &ToolError{Err: interruptedOr(ctx, err)}
 	}
+	missing, permSkipped, err := permissionPreflight(ctx, cmd.ErrOrStderr(), fl, disc, dyn, set)
+	if err != nil {
+		return &ToolError{Err: interruptedOr(ctx, err)}
+	}
 	res, err := apiscan.Scan(ctx, src, set, tv)
 	if err != nil {
 		return &ToolError{Err: interruptedOr(ctx, err)}
@@ -103,6 +108,8 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 	if err != nil {
 		return &ToolError{Err: interruptedOr(ctx, err)}
 	}
+	ex.Missing = missing
+	ex.Skipped = append(ex.Skipped, permSkipped...)
 	if format == outputJSON {
 		err = report.ScanJSON(cmd.OutOrStdout(), res, ex)
 	} else {
@@ -144,16 +151,17 @@ func parseScanFlags(fl scanFlags) (outputFormat, *rules.Version, error) {
 	return format, target, nil
 }
 
-// newSource builds the scan source; the dynamic client is nil for a --path scan.
-func newSource(cmd *cobra.Command, deps Deps, fl scanFlags, set *rules.Set) (apiscan.Source, dynamic.Interface, error) {
+// newSource builds the scan source; the discovery and dynamic clients are nil
+// for a --path scan.
+func newSource(cmd *cobra.Command, deps Deps, fl scanFlags, set *rules.Set) (apiscan.Source, discovery.DiscoveryInterface, dynamic.Interface, error) {
 	if fl.pathSet {
-		return apiscan.NewManifestSource(fl.path, cmd.ErrOrStderr()), nil, nil
+		return apiscan.NewManifestSource(fl.path, cmd.ErrOrStderr()), nil, nil, nil
 	}
 	disc, dyn, err := deps.Kube(fl.kubeconfig, fl.kubeContext)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return apiscan.NewClusterSource(disc, dyn, set), dyn, nil
+	return apiscan.NewClusterSource(disc, dyn, set), disc, dyn, nil
 }
 
 // resolveTarget returns the cluster's current version and the version the

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/HeinanCA/tideclear/internal/addons"
+	"github.com/HeinanCA/tideclear/internal/apiscan"
 	"github.com/HeinanCA/tideclear/internal/nodes"
 	"github.com/HeinanCA/tideclear/internal/reconcile"
 )
@@ -21,7 +22,8 @@ type Extras struct {
 	AddonsRan    bool        // the add-on check ran, so the section shows even when empty
 	InsightsRan  bool        // --insights was given, so the section shows even when empty
 	Skipped      []CheckSkipped
-	RefreshStale bool // an insight was refreshed over 24h ago: the text section adds the console hint
+	Missing      []apiscan.Permission // list access the caller lacks (sorted); the section is omitted when empty
+	RefreshStale bool                 // an insight was refreshed over 24h ago: the text section adds the console hint
 }
 
 // verdicts counts the reconcile rows with verdict v.
@@ -56,6 +58,13 @@ type extrasJSON struct {
 	Addons        *[]addonRowJSON    `json:"addons,omitempty"`
 	Nodes         []nodeRowJSON      `json:"nodes,omitempty"`
 	ChecksSkipped []checkSkippedJSON `json:"checksSkipped,omitempty"`
+	Missing       []permissionJSON   `json:"missingPermissions,omitempty"`
+}
+
+type permissionJSON struct {
+	Group    string `json:"group"`
+	Resource string `json:"resource"`
+	Verb     string `json:"verb"`
 }
 
 type checkSkippedJSON struct {
@@ -112,6 +121,9 @@ func (e Extras) json() extrasJSON {
 	}
 	for _, s := range e.Skipped {
 		out.ChecksSkipped = append(out.ChecksSkipped, checkSkippedJSON(s))
+	}
+	for _, p := range e.Missing {
+		out.Missing = append(out.Missing, permissionJSON(p))
 	}
 	return out
 }

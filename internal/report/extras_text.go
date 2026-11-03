@@ -6,6 +6,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/HeinanCA/tideclear/internal/apiscan"
 	"github.com/HeinanCA/tideclear/internal/reconcile"
 )
 
@@ -13,6 +14,9 @@ const maxEvidence = 3
 
 // extrasText writes the sections the optional checks add; nothing for zero Extras.
 func extrasText(w io.Writer, ex Extras) error {
+	if err := missingSection(w, ex.Missing); err != nil {
+		return err
+	}
 	if ex.InsightsRan {
 		if err := insightsSection(w, ex.Insights); err != nil {
 			return err
@@ -114,4 +118,30 @@ func objectName(kind, ns, name string) string {
 		name = ns + "/" + name
 	}
 	return kind + " " + name
+}
+
+// missingSection lists the denied list permissions and a ClusterRole that
+// grants them, rules grouped by apiGroup in the (sorted) input order. It prints
+// nothing when nothing is missing.
+func missingSection(w io.Writer, missing []apiscan.Permission) error {
+	if len(missing) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("\nmissing permissions (the scan could not read these, so its results are partial):\n")
+	var groups []string
+	byGroup := map[string][]string{}
+	for _, p := range missing {
+		fmt.Fprintf(&b, "  %s\n", p)
+		if _, seen := byGroup[p.Group]; !seen {
+			groups = append(groups, p.Group)
+		}
+		byGroup[p.Group] = append(byGroup[p.Group], p.Resource)
+	}
+	b.WriteString("\nsuggested ClusterRole:\napiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: tideclear-reader\nrules:\n")
+	for _, g := range groups {
+		fmt.Fprintf(&b, "- apiGroups: [%q]\n  resources: [\"%s\"]\n  verbs: [\"list\"]\n", g, strings.Join(byGroup[g], `", "`))
+	}
+	_, err := io.WriteString(w, b.String())
+	return err
 }
