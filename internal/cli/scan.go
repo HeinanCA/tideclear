@@ -48,7 +48,7 @@ func newScanCmd(deps Deps) *cobra.Command {
 			"UNKNOWN. If insights cannot be read the rest of the report still prints, with an\n" +
 			"UNKNOWN row; expired or invalid credentials exit 2.\n\n" +
 			"Exit codes: 0 clean (warnings allowed), 1 blockers (--strict: also STALE and\n" +
-			"UNKNOWN insight rows and UNKNOWN add-on rows), 2 tool or connection error.\n" +
+			"UNKNOWN insight rows, UNKNOWN add-on rows and deprecated-field WARNINGs), 2 tool or connection error.\n" +
 			"Groups or kinds that cannot be read are reported on stderr and in the JSON\n" +
 			"\"skipped\" list; the exit code reflects only what was scanned.",
 		Args: cobra.NoArgs,
@@ -66,7 +66,7 @@ func newScanCmd(deps Deps) *cobra.Command {
 	f.StringVar(&fl.region, "region", "", "AWS region (with --cluster)")
 	f.StringVar(&fl.path, "path", "", "scan manifests under this file or directory instead of a live cluster")
 	f.BoolVar(&fl.insights, "insights", false, "also read EKS Upgrade Insights and reconcile them with the scan (needs --cluster, not --path)")
-	f.BoolVar(&fl.strict, "strict", false, "STALE or UNKNOWN insight rows and UNKNOWN add-on rows count as blockers (exit 1)")
+	f.BoolVar(&fl.strict, "strict", false, "STALE or UNKNOWN insight rows, UNKNOWN add-on rows and deprecated-field WARNINGs count as blockers (exit 1)")
 	f.StringVar(&fl.output, "output", "text", "output format: text|json (table is an alias of text)")
 	return cmd
 }
@@ -120,7 +120,7 @@ func runScan(cmd *cobra.Command, deps Deps, fl scanFlags) error {
 	}
 	if n := strictBlockers(res, ex, fl.strict); n > 0 {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "tideclear: --strict: %s\n",
-			report.Plural(n, "stale/unknown item counts as a blocker", "stale/unknown items count as blockers"))
+			report.Plural(n, "stale, unknown or field-warning item counts as a blocker", "stale, unknown or field-warning items count as blockers"))
 	}
 	return exitFor(res, ex, fl.strict)
 }
@@ -155,7 +155,7 @@ func parseScanFlags(fl scanFlags) (outputFormat, *rules.Version, error) {
 // for a --path scan.
 func newSource(cmd *cobra.Command, deps Deps, fl scanFlags, set *rules.Set) (apiscan.Source, discovery.DiscoveryInterface, dynamic.Interface, error) {
 	if fl.pathSet {
-		return apiscan.NewManifestSource(fl.path, cmd.ErrOrStderr()), nil, nil, nil
+		return apiscan.NewManifestSourceWithRules(fl.path, cmd.ErrOrStderr(), set), nil, nil, nil
 	}
 	disc, dyn, err := deps.Kube(fl.kubeconfig, fl.kubeContext)
 	if err != nil {

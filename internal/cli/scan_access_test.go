@@ -22,7 +22,7 @@ import (
 
 // preflightDiscoveryCalls is how many resource-list discovery calls the permission
 // preflight makes against newCluster (one per group) before the scan reads any.
-const preflightDiscoveryCalls = 2
+const preflightDiscoveryCalls = 3
 
 // answerSSAR makes the fake API server answer SelfSubjectAccessReviews: allowed
 // unless the reviewed resource is in deny. A reactor added later wins.
@@ -121,7 +121,7 @@ func TestScanPermissionPreflight(t *testing.T) {
 				calls := 0
 				c.disc.PrependReactor("get", "resource", func(clienttesting.Action) (bool, runtime.Object, error) {
 					calls++
-					if calls == 1 { // the preflight reads flowcontrol first
+					if calls == 2 { // the preflight reads core, then flowcontrol
 						return true, nil, errors.New("aggregated\napi down")
 					}
 					return false, nil, nil

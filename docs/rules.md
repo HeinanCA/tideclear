@@ -27,6 +27,23 @@ When the Kubernetes source names no replacement, the generator uses the stable v
 same group and kind if one exists, for example `resource.k8s.io/v1`. If none exists, the
 replacement is shown as `-`.
 
+## Field rules
+
+`internal/rules/data/fields.yaml` lists deprecated fields. It is embedded and strictly decoded:
+an unknown key, a missing field, a bad version or a duplicate rule is a load error. It is
+hand-maintained and short. Each rule has `group` (empty for the core group), `kind`, `path` (a
+dotted field path), `deprecated-in`, `removed-in` (empty when no removal is scheduled),
+`replacement` (a hint) and `source` (a URL).
+
+| Condition | Severity |
+|---|---|
+| Target at or after `removed-in` | `BLOCKER` |
+| Target at or after `deprecated-in`, no removal yet | `WARNING` |
+| Target before `deprecated-in` | No finding |
+
+A field set to `null`, `""`, an empty list or an empty map does not count as set. Field rules
+cover one kind and field path, not an apiVersion, so they are separate from the rules above.
+
 ## Severity
 
 | Condition | Severity |

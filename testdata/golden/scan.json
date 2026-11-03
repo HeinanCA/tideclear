@@ -60,6 +60,7 @@
       "origin": "managedFields"
     }
   ],
+  "fieldFindings": [],
   "skipped": [
     {
       "group": "metrics.example.dev",

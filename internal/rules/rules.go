@@ -54,7 +54,10 @@ type Finding struct {
 type GroupKind struct{ Group, Kind string }
 
 // Set is an immutable collection of rules.
-type Set struct{ rules []Rule }
+type Set struct {
+	rules  []Rule
+	fields []FieldRule
+}
 
 type rawRule struct {
 	Version       string `json:"version"`
@@ -86,7 +89,11 @@ func Load() (*Set, error) {
 	if _, err := LifecycleSourceVersion(); err != nil {
 		return nil, fmt.Errorf("k8s lifecycle rules: %w", err)
 	}
-	return &Set{rules: merge(pluto, life)}, nil
+	fields, err := parseFields(rawFields)
+	if err != nil {
+		return nil, fmt.Errorf("field rules: %w", err)
+	}
+	return &Set{rules: merge(pluto, life), fields: fields}, nil
 }
 
 // parse decodes Pluto-shaped yaml and keeps component "k8s".

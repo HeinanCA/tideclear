@@ -17,6 +17,7 @@
       "origin": "web/ingress.yaml:1"
     }
   ],
+  "fieldFindings": [],
   "skipped": [
     {
       "group": "web/broken.yaml",

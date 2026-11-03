@@ -4,7 +4,8 @@ Know your EKS cluster is safe to upgrade.
 
 EKS upgrades one Kubernetes minor version at a time, and each version removes APIs that
 workloads may still use. tideclear tells you which clusters are close to the end of support
-and which objects in a cluster, or in your manifests, will break on the next version.
+and which objects in a cluster, or in your manifests, will break on the next version. It checks
+the apiVersion of each object, and a short list of deprecated fields.
 
 It is a single read-only binary. It never changes a cluster, needs no server or account, and
 sends no telemetry.
@@ -93,7 +94,7 @@ networking.k8s.io/v1beta1  ServiceCIDR  ERROR       BLOCKER  object ServiceCIDR 
 Both rows are BLOCKERs: the live scan found objects that use the API. A row with no live
 object, whose last client call was more than 7 days before the insight refreshed, is STALE:
 AWS still reports it, and clears it on the date the row shows. See
-[Insight verdicts](#insight-verdicts). Add `--strict` to exit 1 on STALE and UNKNOWN rows too.
+[Insight verdicts](#insight-verdicts). Add `--strict` to exit 1 on STALE and UNKNOWN rows, and on deprecated-field warnings, too.
 
 Add `--output json` to any command for machine-readable output.
 
@@ -121,7 +122,7 @@ is a write call.
 
 `scan --insights` reads the insights for the target version and reconciles them with the live
 scan. It needs `--cluster` and a live scan; it is an error with `--path`. `--strict` makes STALE
-and UNKNOWN rows exit 1 (see [Exit codes](#exit-codes)).
+and UNKNOWN rows (and deprecated-field warnings) exit 1 (see [Exit codes](#exit-codes)).
 
 ### Insight verdicts
 
@@ -157,14 +158,14 @@ An `UNKNOWN` row is never treated as clean and never called a stale ghost. See
 | Code | Meaning |
 |---|---|
 | 0 | No blockers. Warnings, STALE and UNKNOWN rows, and skipped checks may be present. |
-| 1 | At least one blocker: an object uses an API removed at or before the target, a client still calls a removed API, or an Amazon Linux 2 node cannot follow the control plane. With `--strict`, also a STALE or UNKNOWN insight row, or an UNKNOWN add-on. |
+| 1 | At least one blocker: an object uses an API removed at or before the target, a client still calls a removed API, or an Amazon Linux 2 node cannot follow the control plane. With `--strict`, also a STALE or UNKNOWN insight row, an UNKNOWN add-on, or a deprecated-field WARNING. A deprecated field removed at or before the target is a blocker without `--strict`. |
 | 2 | Tool, credential or connection error. One line on stderr. |
 
 An incompatible add-on is a `WARNING`. A skipped add-on, nodegroup or node check never makes
 `--strict` exit 1. If insights cannot be read, the insights check is skipped and leaves an UNKNOWN
 insight row, which `--strict` counts. Expired or invalid credentials, including an expired SSO
-session, exit 2. With `--strict`, a line on stderr says how many STALE or UNKNOWN items turned
-the exit into 1.
+session, exit 2. With `--strict`, a line on stderr says how many STALE, UNKNOWN or
+deprecated-field items turned the exit into 1.
 
 `clusters` exits 0 on success even when a cluster is on extended support; the state is shown,
 not treated as an error.
@@ -218,6 +219,7 @@ renamed or removed.
 | `eksCluster` | Cluster name when `--cluster` was given. |
 | `path`, `filesScanned` | For `--path` scans. |
 | `findings[]` | `kind`, `apiVersion`, `namespace`, `name`, `replacement`, `removedIn`, `deprecatedIn`, `severity` (`BLOCKER` or `WARNING`), `source` (`pluto` or `k8s-lifecycle`), `projected`, `origin`. |
+| `fieldFindings[]` | Deprecated fields in use: `kind`, `namespace`, `name`, `field`, `deprecatedIn`, `removedIn` (null when no removal is scheduled), `replacement` (a hint), `severity`, `source` (a URL), `origin` (`live` for a cluster scan). Always present, even if empty. |
 | `skipped[]` | `group`, `kind`, `reason` for anything that could not be read. In `--path` scans, `group` holds the file path. |
 | `unverified` | Number of objects with no apiVersion evidence, which were not checked. |
 | `insights[]` | One row per deprecated API version. Present when `--insights` ran, even if empty. |
@@ -276,7 +278,8 @@ AWS (only for `clusters`, `insights` and `scan --cluster`). Every action is read
 
 Kubernetes (only for a live `scan`): `get` and `list` on the resources being checked, plus API
 discovery. A kind that returns 403 is skipped and reported, not fatal. The node check also needs
-`list` on `nodes`, which is cluster-scoped. The built-in `view` ClusterRole does not grant it.
+`list` on `nodes`, which is cluster-scoped. The built-in `view` ClusterRole does not grant `list`
+on `nodes`. The deprecated-field check also needs `list` on `services`, which `view` does grant.
 
 Before it lists anything, a live `scan` checks `list` access to each resource it reads, and to
 `nodes`, with a `SelfSubjectAccessReview`. This needs `create` on `selfsubjectaccessreviews`. The
@@ -311,11 +314,24 @@ says so.
   `managedFields` entry, shows a deprecated apiVersion. See [docs/detection.md](docs/detection.md).
 - **Manifest scan.** Each document's own `apiVersion` is checked. `List` kinds and top-level
   sequences are expanded.
+- **Deprecated fields.** A small embedded list names fields that Kubernetes has deprecated, such
+  as `Service.spec.externalIPs`. A live scan lists the kind and reads the field on each object.
+  A manifest scan reads it from each document. A field set to an empty list or value does not
+  count. The list is hand-maintained and short: it holds only the rules below. A field that is
+  not on it is not checked. See [docs/rules.md](docs/rules.md).
 - **Severity.**
   - Removed at or before the target: `BLOCKER`.
   - Deprecated but still served: `WARNING`.
   - Removal dates after Kubernetes 1.37 are projected from the deprecation policy, not
     announced, so they are reported as `WARNING` with a `projected` label.
+  - A deprecated field with no removal version is a `WARNING`. A field removed at or before the
+    target is a `BLOCKER`.
+
+Deprecated fields checked today:
+
+| Field | Deprecated in | Removed in | Instead |
+|---|---|---|---|
+| `Service.spec.externalIPs` | 1.36 ([KEP-5707](https://www.kubernetes.dev/resources/keps/5707/)) | not scheduled | Use a `LoadBalancer` Service, an Ingress or the Gateway API. There is no replacement field. |
 
 ## Limits
 
@@ -329,6 +345,7 @@ says so.
 - With `--path` and `--target`, there is no current version to check the target against.
 - `--cluster` and `--context` are independent. They must name the same cluster.
 - Rules cover core Kubernetes APIs. Custom resources of third-party controllers are not checked.
+- The deprecated-field list has one rule. A deprecated field that is not on it is not found.
 - The exec credential plugin (`aws eks get-token`) can print its own lines on stderr. It is
   bounded only by the 10-minute overall scan timeout.
 - `--all-regions` uses a built-in region list.

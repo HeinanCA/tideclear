@@ -1,0 +1,13 @@
+# Field-level deprecations for `tideclear scan`. Strictly decoded: an unknown key is an error.
+# Hand-maintained and short: add a rule here, not in the checks. Each rule names the
+# group/kind, a dotted field path, the minor that deprecated it, the minor that removes it
+# (empty = no removal scheduled) and the page it rests on.
+fields:
+  # KEP-5707: deprecation warning only. The field still works; no removal version is set.
+  - group: ""
+    kind: Service
+    path: spec.externalIPs
+    deprecated-in: "1.36"
+    removed-in: ""
+    replacement: "use a LoadBalancer Service, Ingress or Gateway API; there is no replacement field"
+    source: https://www.kubernetes.dev/resources/keps/5707/

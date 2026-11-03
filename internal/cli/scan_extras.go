@@ -122,15 +122,18 @@ func insightsExtras(ctx context.Context, stderr io.Writer, api ClusterAPI, deps 
 	return ex, compat, nil
 }
 
-// exitFor is the scan's verdict: ErrBlockers on any live BLOCKER finding or
-// BLOCKER reconcile row or node row; with strict, also on STALE or UNKNOWN reconcile rows
-// and UNKNOWN add-on rows. A skipped check and an incompatible add-on (a
-// WARNING) never count.
+// exitFor is the scan's verdict: ErrBlockers on any BLOCKER finding, field
+// BLOCKER, reconcile row or node row; with strict, also on STALE or UNKNOWN
+// reconcile rows, UNKNOWN add-on rows and field WARNINGs. A skipped check and
+// an incompatible add-on (a WARNING) never count.
 func exitFor(res apiscan.Result, ex report.Extras, strict bool) error {
 	for _, it := range res.Findings {
 		if it.Finding.Severity == rules.SeverityBlocker {
 			return ErrBlockers
 		}
+	}
+	if slices.ContainsFunc(res.FieldFindings, func(f apiscan.FieldFinding) bool { return f.Severity == rules.SeverityBlocker }) {
+		return ErrBlockers
 	}
 	if slices.ContainsFunc(ex.Nodes, func(r nodes.Row) bool { return r.Severity == rules.SeverityBlocker }) {
 		return ErrBlockers
@@ -140,18 +143,29 @@ func exitFor(res apiscan.Result, ex report.Extras, strict bool) error {
 			return ErrBlockers
 		}
 	}
-	if strict && ex.StrictItems() > 0 {
+	if strict && strictItems(res, ex) > 0 {
 		return ErrBlockers
 	}
 	return nil
 }
 
-// strictBlockers counts the STALE and UNKNOWN items that make --strict exit 1
-// where the same scan would exit 0; zero when strict is off or a real blocker
-// already decides.
+// strictItems counts what --strict turns into blockers: STALE and UNKNOWN
+// rows, plus field WARNINGs (a BLOCKER already exits 1).
+func strictItems(res apiscan.Result, ex report.Extras) int {
+	n := ex.StrictItems()
+	for _, f := range res.FieldFindings {
+		if f.Severity == rules.SeverityWarning {
+			n++
+		}
+	}
+	return n
+}
+
+// strictBlockers counts the items that make --strict exit 1 where the same
+// scan would exit 0; zero when strict is off or a real blocker already decides.
 func strictBlockers(res apiscan.Result, ex report.Extras, strict bool) int {
 	if !strict || exitFor(res, ex, false) != nil {
 		return 0
 	}
-	return ex.StrictItems()
+	return strictItems(res, ex)
 }

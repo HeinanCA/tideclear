@@ -28,15 +28,22 @@ through an old version produces false positives.
 
 Objects with no evidence are counted as `unverified` and are not checked.
 
+Deprecated fields are read in the same pass. A kind that a field rule covers, such as `Service`,
+is listed too, and the permission preflight checks `list` on it. The field is read from the live
+object itself, so no apiVersion evidence is needed. Objects of a kind that only a field rule
+covers are not counted as `unverified`. See [rules.md](rules.md).
+
 ### Partial results
 
 A failure in one part of the API does not stop the scan:
 
 - A kind that returns 403 on `list` is skipped.
 - A group whose discovery fails is skipped, for example an aggregated API that is down.
+- A group that a field rule covers, but the server does not list, is skipped: its fields were not checked.
 
 Each skip is printed on stderr, listed in the JSON `skipped` array, and noted in the text
-footer as partial results. The exit code reflects only what was scanned.
+footer as partial results. The exit code reflects only what was scanned. With `--strict`, a deprecated-field WARNING exits 1;
+without it, only a field removed at or before the target does.
 
 Other errors stop the scan with exit 2. These include failure to reach the API server, failure
 of API discovery as a whole, and other list errors.
@@ -62,6 +69,9 @@ Each document is evidence of its own `apiVersion`.
 | `--path` itself is a symlink | Resolved before the walk. |
 
 `ORIGIN` is `file:document` or `file:document/item`, relative to `--path`.
+
+Each document is also checked for the deprecated fields in the field rules. A document whose field
+path runs through a value that is not a map (`spec: oops`) is reported as skipped, not as clean.
 
 ## Reconciling Upgrade Insights
 

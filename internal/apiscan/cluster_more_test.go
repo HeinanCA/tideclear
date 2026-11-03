@@ -68,7 +68,7 @@ func TestNonPreferredDiscoveryFailureIsSkipped(t *testing.T) {
 	calls := 0
 	disc.PrependReactor("get", "resource", func(clienttesting.Action) (bool, runtime.Object, error) {
 		calls++
-		if calls == 2 {
+		if calls == 3 { // the empty core group is read first
 			return true, nil, apierrors.NewServiceUnavailable("old version down")
 		}
 		return false, nil, nil

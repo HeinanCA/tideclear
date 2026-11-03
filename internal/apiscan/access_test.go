@@ -112,7 +112,7 @@ func TestCheckAccessErrors(t *testing.T) {
 		if err != nil || got != nil || len(rec.seen) != 1 {
 			t.Fatalf("missing=%v err=%v asked=%v, want only nodes asked", got, err, rec.seen)
 		}
-		if len(gaps) != 2 || !strings.Contains(gaps[0], "aggregated api down") || !strings.Contains(strings.Join(gaps, " "), "flowcontrol.apiserver.k8s.io/v1") {
+		if len(gaps) != 3 || !strings.Contains(gaps[0], "aggregated api down") || !strings.Contains(strings.Join(gaps, " "), "flowcontrol.apiserver.k8s.io/v1") {
 			t.Errorf("gaps = %v, want each failed version named with its reason", gaps)
 		}
 	})

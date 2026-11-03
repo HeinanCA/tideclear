@@ -48,10 +48,10 @@ func TestScanAllSkippedIsNotTheCleanLine(t *testing.T) {
 	})
 	code, out, se := run(t, kubeDeps(t, c), "scan")
 	// The permission preflight names the unreadable groups too, before the scan's own skip lines.
-	if code != 0 || len(lines(se)) != 3 || !strings.HasPrefix(se, "tideclear: warning: permission check incomplete: ") {
+	if code != 0 || len(lines(se)) != 4 || !strings.HasPrefix(se, "tideclear: warning: permission check incomplete: ") {
 		t.Fatalf("exit=%d stderr=%q", code, se)
 	}
-	if out == "no findings for target 1.32\n" || !strings.Contains(out, "2 skipped, results are partial") {
+	if out == "no findings for target 1.32\n" || !strings.Contains(out, "3 skipped, results are partial") {
 		t.Fatalf("stdout = %q, must say results are partial", out)
 	}
 }
@@ -61,7 +61,7 @@ func TestScanPartialFooterWithFindings(t *testing.T) {
 	calls := 0
 	c.disc.PrependReactor("get", "resource", func(clienttesting.Action) (bool, runtime.Object, error) {
 		calls++
-		if calls == 2+preflightDiscoveryCalls { // the permission preflight reads each group first
+		if calls == 3+preflightDiscoveryCalls { // the permission preflight reads each group first
 			return true, nil, errors.NewServiceUnavailable("down")
 		}
 		return false, nil, nil
@@ -77,7 +77,7 @@ func TestScanSkippedReasonIsOneLineInJSON(t *testing.T) {
 	calls := 0
 	c.disc.PrependReactor("get", "resource", func(clienttesting.Action) (bool, runtime.Object, error) {
 		calls++
-		if calls == 2+preflightDiscoveryCalls { // the permission preflight reads each group first
+		if calls == 3+preflightDiscoveryCalls { // the permission preflight reads each group first
 			return true, nil, errors.NewServiceUnavailable("line one\nline two")
 		}
 		return false, nil, nil

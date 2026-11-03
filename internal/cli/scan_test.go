@@ -43,6 +43,7 @@ func newCluster(major, minor string) cluster {
 	fs.SetManagedFields([]metav1.ManagedFieldsEntry{{Manager: "kubectl", Operation: "Update", APIVersion: fsOld}})
 	disc := &fakedisc.FakeDiscovery{
 		Fake: &clienttesting.Fake{Resources: []*metav1.APIResourceList{
+			{GroupVersion: "v1"},
 			{GroupVersion: fsGV, APIResources: []metav1.APIResource{{Name: "flowschemas", Kind: "FlowSchema", Verbs: metav1.Verbs{"get", "list"}}}},
 			{GroupVersion: "networking.k8s.io/v1", APIResources: []metav1.APIResource{{Name: "ingresses", Kind: "Ingress", Namespaced: true, Verbs: metav1.Verbs{"get", "list"}}}},
 		}},
@@ -169,10 +170,10 @@ func TestScanClusterLookupErrorIsToolError(t *testing.T) {
 func TestScanSkippedReportedOnStderrAndJSON(t *testing.T) {
 	c := newCluster("1", "31")
 	calls := 0
-	// Groups are visited in name order: flowcontrol first, then networking.
+	// Groups are visited in name order: core, flowcontrol, then networking.
 	c.disc.PrependReactor("get", "resource", func(clienttesting.Action) (bool, runtime.Object, error) {
 		calls++
-		if calls == 2+preflightDiscoveryCalls { // the permission preflight reads each group first
+		if calls == 3+preflightDiscoveryCalls { // the permission preflight reads each group first
 			return true, nil, apierrors.NewServiceUnavailable("aggregated api down")
 		}
 		return false, nil, nil
