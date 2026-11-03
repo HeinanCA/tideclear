@@ -14,8 +14,9 @@ import (
 )
 
 type manifestSource struct {
-	root string
-	warn io.Writer
+	root   string
+	warn   io.Writer
+	fields []rules.FieldRule // empty: report no fields
 }
 
 // NewManifestSource reads every .yaml/.yml/.json file under root (or root
@@ -118,9 +119,13 @@ func (m manifestSource) scanRootFile(path string, info fs.FileInfo, obs *Observe
 
 func (m manifestSource) ingest(obs *Observed, rel string, data []byte) {
 	obs.FilesScanned++
-	objs, unverified, derr := decodeManifest(data, rel)
+	objs, hits, unchecked, unverified, derr := decodeManifest(data, rel, m.fields)
 	obs.Objects = append(obs.Objects, objs...)
+	obs.Fields = append(obs.Fields, hits...)
 	obs.Unverified += unverified
+	for _, reason := range unchecked {
+		m.skip(obs, rel, reason)
+	}
 	if derr != nil {
 		m.skip(obs, rel, derr.Error())
 	}

@@ -41,6 +41,8 @@ type Observed struct {
 	Listed []Listed
 	// FilesScanned counts the manifest files a path scan read.
 	FilesScanned int
+	// Fields is every object that sets a field some rule deprecates, whatever the target.
+	Fields []FieldHit
 }
 
 // ClusterInfo identifies the cluster a scan ran against.
@@ -64,12 +66,14 @@ type Result struct {
 	Target  rules.Version
 	Cluster ClusterInfo
 	// Path is the manifest root of a --path scan (empty for a live scan).
-	Path         string
-	Findings     []ResultItem
-	Skipped      []Skipped
-	Unverified   int
-	Listed       []Listed
-	FilesScanned int
+	Path     string
+	Findings []ResultItem
+	// FieldFindings is the Fields that apply at Target, sorted by kind, namespace, name, path.
+	FieldFindings []FieldFinding
+	Skipped       []Skipped
+	Unverified    int
+	Listed        []Listed
+	FilesScanned  int
 	// Live is every object with apiVersion evidence, rule-matched or not. Rule 1
 	// of the insights reconcile matches against it, so a live object at a version
 	// no bundled rule covers is still seen.
@@ -93,6 +97,7 @@ func Scan(ctx context.Context, src Source, set *rules.Set, target rules.Version)
 		a, b := res.Findings[i].Object, res.Findings[j].Object
 		return key(a.Kind, a.APIVersion, a.Namespace, a.Name) < key(b.Kind, b.APIVersion, b.Namespace, b.Name)
 	})
+	res.FieldFindings = fieldFindings(obs.Fields, target)
 	sort.SliceStable(res.Skipped, func(i, j int) bool {
 		return key(res.Skipped[i].Group, res.Skipped[i].Kind) < key(res.Skipped[j].Group, res.Skipped[j].Kind)
 	})
@@ -100,3 +105,19 @@ func Scan(ctx context.Context, src Source, set *rules.Set, target rules.Version)
 }
 
 func key(parts ...string) string { return strings.Join(parts, "\x00") }
+
+// fieldFindings keeps the hits whose rule applies at target, sorted by kind,
+// namespace, name, path, origin.
+func fieldFindings(hits []FieldHit, target rules.Version) []FieldFinding {
+	var out []FieldFinding
+	for _, h := range hits {
+		if sev, ok := h.Rule.Severity(target); ok {
+			out = append(out, FieldFinding{Hit: h, Severity: sev})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i].Hit, out[j].Hit
+		return key(a.Kind, a.Group, a.Namespace, a.Name, a.Rule.Path, a.Origin) < key(b.Kind, b.Group, b.Namespace, b.Name, b.Rule.Path, b.Origin)
+	})
+	return out
+}

@@ -20,6 +20,7 @@ const (
 	lastAppliedAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
 	originLastApplied     = "last-applied"
 	originManagedFields   = "managedFields"
+	originLive            = "live"
 	listPageSize          = 500
 	maxListPages          = 10000
 )
@@ -81,30 +82,83 @@ func (c *clusterSource) Objects(ctx context.Context) (Observed, error) {
 		}
 		return Observed{}, fmt.Errorf("discover API groups: %w", withStatus(err))
 	}
-	wanted := map[rules.GroupKind]bool{}
-	wantedGroup := map[string]bool{}
-	for _, gk := range c.set.Kinds() {
-		wanted[gk] = true
-		wantedGroup[gk.Group] = true
-	}
+	wanted, wantedGroup := wantedKinds(c.set)
+	apiKinds := apiVersionKinds(c.set)
 	sort.Slice(groups.Groups, func(i, j int) bool { return groups.Groups[i].Name < groups.Groups[j].Name })
 
 	var obs Observed
+	served := map[string]bool{}
 	for _, g := range groups.Groups {
+		served[g.Name] = true
 		if !wantedGroup[g.Name] {
 			continue
 		}
 		if err := ctx.Err(); err != nil {
 			return Observed{}, err
 		}
-		if err := c.readGroup(ctx, g, wanted, &obs); err != nil {
+		if err := c.readGroup(ctx, g, wanted, apiKinds, &obs); err != nil {
 			return Observed{}, err
+		}
+	}
+	// A field rule's group the server never listed was not read: say so. An
+	// apiVersion rule's group may be legitimately gone (removed API), so it is not reported.
+	for _, g := range fieldRuleGroups(c.set) {
+		if !served[g] {
+			obs.Skipped = append(obs.Skipped, Skipped{Group: g, Reason: "API group not served by the API server; deprecated fields not checked"})
 		}
 	}
 	return obs, nil
 }
 
-func (c *clusterSource) readGroup(ctx context.Context, g metav1.APIGroup, wanted map[rules.GroupKind]bool, obs *Observed) error {
+// fieldRuleGroups is the sorted, distinct groups the field rules cover.
+func fieldRuleGroups(set *rules.Set) []string {
+	var out []string
+	for _, fr := range set.FieldRules() {
+		if !slices.Contains(out, fr.Group) {
+			out = append(out, fr.Group)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// wantedKinds indexes the kinds the rules cover (apiVersion rules and field
+// rules), and the groups they live in.
+func wantedKinds(set *rules.Set) (map[rules.GroupKind]bool, map[string]bool) {
+	wanted := map[rules.GroupKind]bool{}
+	wantedGroup := map[string]bool{}
+	add := func(gk rules.GroupKind) {
+		wanted[gk] = true
+		wantedGroup[gk.Group] = true
+	}
+	for _, gk := range set.Kinds() {
+		add(gk)
+	}
+	for _, fr := range set.FieldRules() {
+		add(rules.GroupKind{Group: fr.Group, Kind: fr.Kind})
+	}
+	return wanted, wantedGroup
+}
+
+// apiVersionKinds is the kinds an apiVersion rule covers. A wanted kind outside
+// it is read for its fields only: its objects carry no apiVersion evidence and
+// are neither checked against apiVersion rules nor counted as unverified.
+func apiVersionKinds(set *rules.Set) map[rules.GroupKind]bool {
+	out := map[rules.GroupKind]bool{}
+	for _, gk := range set.Kinds() {
+		out[gk] = true
+	}
+	return out
+}
+
+// listable reports whether the scan reads r: a wanted kind with the list verb
+// and no subresource. Create-only resources (TokenReview, SubjectAccessReview,
+// ...) answer list with 405.
+func listable(r metav1.APIResource, group string, wanted map[rules.GroupKind]bool) bool {
+	return !strings.Contains(r.Name, "/") && slices.Contains(r.Verbs, "list") && wanted[rules.GroupKind{Group: group, Kind: r.Kind}]
+}
+
+func (c *clusterSource) readGroup(ctx context.Context, g metav1.APIGroup, wanted, apiKinds map[rules.GroupKind]bool, obs *Observed) error {
 	pending := 0
 	for gk := range wanted {
 		if gk.Group == g.Name {
@@ -146,20 +200,20 @@ func (c *clusterSource) readGroup(ctx context.Context, g metav1.APIGroup, wanted
 			continue
 		}
 		for _, r := range list.APIResources {
-			// Create-only resources (TokenReview, SubjectAccessReview, ...) answer list with 405.
-			if strings.Contains(r.Name, "/") || !slices.Contains(r.Verbs, "list") || !wanted[rules.GroupKind{Group: g.Name, Kind: r.Kind}] || found[r.Kind] {
+			if !listable(r, g.Name, wanted) || found[r.Kind] {
 				continue
 			}
 			found[r.Kind] = true
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			got, unverified, err := c.listKind(ctx, parsed.WithResource(r.Name), r.Kind)
+			read, err := c.listKind(ctx, parsed.WithResource(r.Name), r.Kind, apiKinds[rules.GroupKind{Group: g.Name, Kind: r.Kind}])
 			switch {
 			case err == nil:
-				obs.Objects = append(obs.Objects, got...)
-				obs.Unverified += unverified
-				obs.Listed = append(obs.Listed, Listed{Group: g.Name, Resource: r.Name, Kind: r.Kind, Unverified: unverified})
+				obs.Objects = append(obs.Objects, read.objects...)
+				obs.Fields = append(obs.Fields, read.fields...)
+				obs.Unverified += read.unverified
+				obs.Listed = append(obs.Listed, Listed{Group: g.Name, Resource: r.Name, Kind: r.Kind, Unverified: read.unverified})
 			case apierrors.IsForbidden(err):
 				obs.Skipped = append(obs.Skipped, Skipped{Group: g.Name, Kind: r.Kind, Reason: err.Error()})
 			default:
@@ -172,42 +226,55 @@ func (c *clusterSource) readGroup(ctx context.Context, g metav1.APIGroup, wanted
 
 // listKind lists one kind, restarting from scratch once if the server
 // expires the continue token (410).
-func (c *clusterSource) listKind(ctx context.Context, gvr schema.GroupVersionResource, kind string) ([]Object, int, error) {
-	out, unverified, err := c.listPages(ctx, gvr, kind)
+func (c *clusterSource) listKind(ctx context.Context, gvr schema.GroupVersionResource, kind string, apiVersionKind bool) (kindRead, error) {
+	read, err := c.listPages(ctx, gvr, kind, apiVersionKind)
 	if apierrors.IsResourceExpired(err) || apierrors.IsGone(err) {
-		out, unverified, err = c.listPages(ctx, gvr, kind)
+		read, err = c.listPages(ctx, gvr, kind, apiVersionKind)
 	}
-	return out, unverified, err
+	return read, err
 }
 
-func (c *clusterSource) listPages(ctx context.Context, gvr schema.GroupVersionResource, kind string) ([]Object, int, error) {
-	var out []Object
-	unverified := 0
+// kindRead is everything one kind's list yielded.
+type kindRead struct {
+	objects    []Object
+	fields     []FieldHit
+	unverified int
+}
+
+func (c *clusterSource) listPages(ctx context.Context, gvr schema.GroupVersionResource, kind string, apiVersionKind bool) (kindRead, error) {
+	var out kindRead
 	opts := metav1.ListOptions{Limit: listPageSize}
 	for page := 0; ; page++ {
 		if page >= maxListPages {
-			return nil, 0, fmt.Errorf("gave up after %d pages", maxListPages)
+			return kindRead{}, fmt.Errorf("gave up after %d pages", maxListPages)
 		}
 		if err := ctx.Err(); err != nil {
-			return nil, 0, err
+			return kindRead{}, err
 		}
 		l, err := c.dyn.Resource(gvr).Namespace(metav1.NamespaceAll).List(ctx, opts)
 		if err != nil {
-			return nil, 0, err
+			return kindRead{}, err
 		}
 		for i := range l.Items {
-			ev := evidence(&l.Items[i], kind, gvr.Resource)
-			if len(ev) == 0 {
-				unverified++
+			u := &l.Items[i]
+			// Live objects are API-validated, so a malformed path is not reported.
+			hits, _ := fieldHits(c.set.FieldRules(), gvr.Group, kind, u.GetNamespace(), u.GetName(), originLive, u.Object)
+			out.fields = append(out.fields, hits...)
+			if !apiVersionKind {
+				continue
 			}
-			out = append(out, ev...)
+			ev := evidence(u, kind, gvr.Resource)
+			if len(ev) == 0 {
+				out.unverified++
+			}
+			out.objects = append(out.objects, ev...)
 		}
 		next := l.GetContinue()
 		if next == "" {
-			return out, unverified, nil
+			return out, nil
 		}
 		if next == opts.Continue {
-			return nil, 0, errors.New("server returned the same continue token twice")
+			return kindRead{}, errors.New("server returned the same continue token twice")
 		}
 		opts.Continue = next
 	}

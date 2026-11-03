@@ -93,12 +93,15 @@ func cleanCluster() cluster {
 		"apiVersion": fsGV, "kind": "FlowSchema", "metadata": map[string]any{"name": "web"}}}
 	fs.SetManagedFields([]metav1.ManagedFieldsEntry{{Manager: "kubectl", Operation: "Update", APIVersion: fsGV}})
 	disc := &fakedisc.FakeDiscovery{Fake: &clienttesting.Fake{Resources: []*metav1.APIResourceList{
+		{GroupVersion: "v1"},
 		{GroupVersion: fsGV, APIResources: []metav1.APIResource{{Name: "flowschemas", Kind: "FlowSchema", Verbs: metav1.Verbs{"get", "list"}}}},
 	}}}
 	disc.FakedServerVersion = newCluster("1", "30").disc.FakedServerVersion
 	dyn := fakedyn.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
 		map[schema.GroupVersionResource]string{fsGVR: "FlowSchemaList", nodeGVR: "NodeList"}, fs)
-	return cluster{disc: disc, dyn: dyn}
+	c := cluster{disc: disc, dyn: dyn}
+	answerSSAR(c) // the fake API server grants every review unless a test says otherwise
+	return c
 }
 
 func insightDeps(t *testing.T, c cluster, api ClusterAPI) Deps {

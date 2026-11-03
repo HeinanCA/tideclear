@@ -34,6 +34,7 @@
       "origin": "last-applied"
     }
   ],
+  "fieldFindings": [],
   "skipped": [
     {
       "group": "metrics.example.dev",

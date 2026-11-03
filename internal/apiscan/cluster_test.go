@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +54,12 @@ func resList(gv string, kinds map[string]string) *metav1.APIResourceList {
 	return l
 }
 
+// newDisc serves an empty core group unless lists has one, as every real
+// cluster does; a missing core group is reported as skipped.
 func newDisc(lists ...*metav1.APIResourceList) *fakedisc.FakeDiscovery {
+	if !slices.ContainsFunc(lists, func(l *metav1.APIResourceList) bool { return l.GroupVersion == "v1" }) {
+		lists = append(lists, &metav1.APIResourceList{GroupVersion: "v1"})
+	}
 	return &fakedisc.FakeDiscovery{Fake: &clienttesting.Fake{Resources: lists}}
 }
 
@@ -237,10 +243,10 @@ func TestBrokenGroupIsSkippedOthersScanned(t *testing.T) {
 		resList("extensions/v1beta1", map[string]string{"ingresses": "Ingress"}),
 		resList(ingNew, map[string]string{"ingresses": "Ingress"}))
 	calls := 0
-	// Groups are visited in name order, so the first call is "extensions".
+	// Groups are visited in name order: the empty core group, then "extensions".
 	disc.PrependReactor("get", "resource", func(clienttesting.Action) (bool, runtime.Object, error) {
 		calls++
-		if calls == 1 {
+		if calls == 2 {
 			return true, nil, apierrors.NewServiceUnavailable("aggregated api down")
 		}
 		return false, nil, nil

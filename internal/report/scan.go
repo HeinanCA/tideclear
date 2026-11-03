@@ -48,8 +48,8 @@ func scanTextBody(w io.Writer, r apiscan.Result) error {
 func scanSummary(w io.Writer, r apiscan.Result) error {
 	var err error
 	switch {
-	case len(r.Findings) > 0:
-		if err = findingsTable(w, r); err != nil {
+	case len(r.Findings)+len(r.FieldFindings) > 0:
+		if err = findingsTables(w, r); err != nil {
 			return err
 		}
 		if n := len(r.Skipped); n > 0 {
@@ -65,6 +65,46 @@ func scanSummary(w io.Writer, r apiscan.Result) error {
 		_, err = fmt.Fprintf(w, "no findings for target %s\n", r.Target)
 	}
 	return err
+}
+
+// findingsTables writes the apiVersion table, then the deprecated-field table,
+// each only when it has rows.
+func findingsTables(w io.Writer, r apiscan.Result) error {
+	if len(r.Findings) > 0 {
+		if err := findingsTable(w, r); err != nil {
+			return err
+		}
+	}
+	if len(r.FieldFindings) == 0 {
+		return nil
+	}
+	if len(r.Findings) > 0 {
+		if _, err := fmt.Fprintln(w); err != nil {
+			return err
+		}
+	}
+	return fieldTable(w, r)
+}
+
+func fieldTable(w io.Writer, r apiscan.Result) error {
+	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)
+	pathMode := r.Path != ""
+	header := "KIND\tNAMESPACE\tNAME\tFIELD\tDEPRECATED IN\tREMOVED IN\tHINT\tSEVERITY"
+	if pathMode {
+		header += "\tORIGIN"
+	}
+	_, _ = fmt.Fprintln(tw, header)
+	for _, f := range r.FieldFindings {
+		rule := f.Hit.Rule
+		row := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+			f.Hit.Kind, dash(f.Hit.Namespace), f.Hit.Name, rule.Path, rule.DeprecatedIn,
+			versionOrDash(rule.RemovedIn), dash(rule.Replacement), f.Severity)
+		if pathMode {
+			row += "\t" + f.Hit.Origin
+		}
+		_, _ = fmt.Fprintln(tw, row)
+	}
+	return tw.Flush()
 }
 
 func findingsTable(w io.Writer, r apiscan.Result) error {
@@ -128,6 +168,19 @@ type findingJSON struct {
 	Origin       string  `json:"origin"`
 }
 
+type fieldFindingJSON struct {
+	Kind         string  `json:"kind"`
+	Namespace    string  `json:"namespace"`
+	Name         string  `json:"name"`
+	Field        string  `json:"field"`
+	DeprecatedIn string  `json:"deprecatedIn"`
+	RemovedIn    *string `json:"removedIn"`
+	Replacement  string  `json:"replacement"`
+	Severity     string  `json:"severity"`
+	Source       string  `json:"source"`
+	Origin       string  `json:"origin"`
+}
+
 type skippedItemJSON struct {
 	Group  string `json:"group"`
 	Kind   string `json:"kind"`
@@ -140,22 +193,23 @@ type scanClusterJSON struct {
 }
 
 type scanDoc struct {
-	SchemaVersion int               `json:"schemaVersion"`
-	Target        string            `json:"target"`
-	Path          string            `json:"path,omitempty"`
-	Cluster       *scanClusterJSON  `json:"cluster,omitempty"`
-	EKSCluster    string            `json:"eksCluster,omitempty"`
-	Findings      []findingJSON     `json:"findings"`
-	Skipped       []skippedItemJSON `json:"skipped"`
-	Unverified    int               `json:"unverified"`
-	FilesScanned  *int              `json:"filesScanned,omitempty"`
+	SchemaVersion int                `json:"schemaVersion"`
+	Target        string             `json:"target"`
+	Path          string             `json:"path,omitempty"`
+	Cluster       *scanClusterJSON   `json:"cluster,omitempty"`
+	EKSCluster    string             `json:"eksCluster,omitempty"`
+	Findings      []findingJSON      `json:"findings"`
+	FieldFindings []fieldFindingJSON `json:"fieldFindings"`
+	Skipped       []skippedItemJSON  `json:"skipped"`
+	Unverified    int                `json:"unverified"`
+	FilesScanned  *int               `json:"filesScanned,omitempty"`
 	extrasJSON
 }
 
-// ScanJSON writes the scan document (schemaVersion 1). findings and skipped
+// ScanJSON writes the scan document (schemaVersion 1). findings, fieldFindings and skipped
 // are always arrays; unverified is always present; cluster is present for live scans, path for manifest scans.
 func ScanJSON(w io.Writer, r apiscan.Result, ex Extras) error {
-	doc := scanDoc{SchemaVersion: schemaVersion, Target: r.Target.String(), Findings: []findingJSON{}, Skipped: []skippedItemJSON{},
+	doc := scanDoc{SchemaVersion: schemaVersion, Target: r.Target.String(), Findings: []findingJSON{}, FieldFindings: []fieldFindingJSON{}, Skipped: []skippedItemJSON{},
 		Path: r.Path, EKSCluster: r.Cluster.EKSCluster, Unverified: r.Unverified}
 	if r.Path == "" {
 		doc.Cluster = &scanClusterJSON{Context: r.Cluster.Context, Server: r.Cluster.Server}
@@ -169,6 +223,14 @@ func ScanJSON(w io.Writer, r apiscan.Result, ex Extras) error {
 			Kind: it.Object.Kind, APIVersion: it.Object.APIVersion, Namespace: it.Object.Namespace, Name: it.Object.Name,
 			Replacement: it.Finding.Replacement, RemovedIn: versionPtr(rule.RemovedIn), DeprecatedIn: versionPtr(rule.DeprecatedIn),
 			Severity: string(it.Finding.Severity), Source: rule.Source, Projected: rule.Projected(), Origin: it.Object.Origin,
+		})
+	}
+	for _, f := range r.FieldFindings {
+		rule := f.Hit.Rule
+		doc.FieldFindings = append(doc.FieldFindings, fieldFindingJSON{
+			Kind: f.Hit.Kind, Namespace: f.Hit.Namespace, Name: f.Hit.Name, Field: rule.Path,
+			DeprecatedIn: rule.DeprecatedIn.String(), RemovedIn: versionPtr(rule.RemovedIn), Replacement: rule.Replacement,
+			Severity: string(f.Severity), Source: rule.Source, Origin: f.Hit.Origin,
 		})
 	}
 	for _, s := range r.Skipped {

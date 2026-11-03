@@ -6,6 +6,7 @@
     "server": ""
   },
   "findings": [],
+  "fieldFindings": [],
   "skipped": [],
   "unverified": 0
 }
